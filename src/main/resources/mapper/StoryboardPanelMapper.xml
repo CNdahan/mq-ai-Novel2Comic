@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.StoryboardPanelMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.StoryboardPanel">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="novelId" column="novelId" jdbcType="BIGINT"/>
+            <result property="panelIndex" column="panelIndex" jdbcType="INTEGER"/>
+            <result property="sceneType" column="sceneType" jdbcType="VARCHAR"/>
+            <result property="shotType" column="shotType" jdbcType="VARCHAR"/>
+            <result property="descriptionCn" column="descriptionCn" jdbcType="VARCHAR"/>
+            <result property="descriptionEn" column="descriptionEn" jdbcType="VARCHAR"/>
+            <result property="characterList" column="characterList" jdbcType="OTHER"
+                    typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
+            <result property="environment" column="environment" jdbcType="VARCHAR"/>
+            <result property="mood" column="mood" jdbcType="VARCHAR"/>
+            <result property="dialogueText" column="dialogueText" jdbcType="VARCHAR"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,novelId,panelIndex,
+        sceneType,shotType,descriptionCn,
+        descriptionEn,characterList,environment,
+        mood,dialogueText,createTime,
+        isDelete
+    </sql>
+</mapper>

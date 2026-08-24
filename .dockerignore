@@ -1,0 +1,66 @@
+# =====================================================
+# Docker 构建忽略文件
+# =====================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+
+# 构建产物
+target/
+build/
+dist/
+node_modules/
+
+# 日志
+logs/
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# 文档
+docs/
+*.md
+!README.md
+
+# 测试
+test/
+tests/
+*.test.js
+*.spec.js
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# 数据文件
+images/
+data/
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# 部署脚本
+*.sh
+!check-config.sh
+!deploy-prod.sh
+

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.ApiCallStatMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.ApiCallStat">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="userId" column="user_id" jdbcType="BIGINT"/>
+        <result property="apiType" column="api_type" jdbcType="VARCHAR"/>
+        <result property="modelName" column="model_name" jdbcType="VARCHAR"/>
+        <result property="requestTokens" column="request_tokens" jdbcType="INTEGER"/>
+        <result property="responseTokens" column="response_tokens" jdbcType="INTEGER"/>
+        <result property="imageCount" column="image_count" jdbcType="INTEGER"/>
+        <result property="costAmount" column="cost_amount" jdbcType="DECIMAL"/>
+        <result property="responseTimeMs" column="response_time_ms" jdbcType="INTEGER"/>
+        <result property="isSuccess" column="is_success" jdbcType="TINYINT"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+        <result property="isDelete" column="is_delete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, api_type, model_name, request_tokens, response_tokens, image_count,
+        cost_amount, response_time_ms, is_success, error_message, create_time, is_delete
+    </sql>
+
+</mapper>

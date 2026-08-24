@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.ComicPanelMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.ComicPanel">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="novelId" column="novelId" jdbcType="BIGINT"/>
+            <result property="storyboardId" column="storyboardId" jdbcType="BIGINT"/>
+            <result property="panelIndex" column="panelIndex" jdbcType="INTEGER"/>
+            <result property="imageUrl" column="imageUrl" jdbcType="VARCHAR"/>
+            <result property="imageWidth" column="imageWidth" jdbcType="INTEGER"/>
+            <result property="imageHeight" column="imageHeight" jdbcType="INTEGER"/>
+            <result property="imageSize" column="imageSize" jdbcType="BIGINT"/>
+            <result property="style" column="style" jdbcType="VARCHAR"/>
+            <result property="promptText" column="promptText" jdbcType="VARCHAR"/>
+            <result property="negativePrompt" column="negativePrompt" jdbcType="VARCHAR"/>
+            <result property="isCached" column="isCached" jdbcType="TINYINT"/>
+            <result property="cacheSimilarity" column="cacheSimilarity" jdbcType="DOUBLE"/>
+            <result property="generateTimeMs" column="generateTimeMs" jdbcType="INTEGER"/>
+            <result property="apiCost" column="apiCost" jdbcType="DECIMAL"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,novelId,storyboardId,
+        panelIndex,imageUrl,imageWidth,
+        imageHeight,imageSize,style,
+        promptText,negativePrompt,isCached,
+        cacheSimilarity,generateTimeMs,apiCost,
+        createTime,isDelete
+    </sql>
+</mapper>

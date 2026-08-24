@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.GenerateTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.GenerateTask">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="taskUuid" column="task_uuid" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="BIGINT"/>
+        <result property="novelId" column="novel_id" jdbcType="BIGINT"/>
+        <result property="taskType" column="task_type" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="progressPercent" column="progress_percent" jdbcType="INTEGER"/>
+        <result property="currentStep" column="current_step" jdbcType="VARCHAR"/>
+        <result property="totalPanels" column="total_panels" jdbcType="INTEGER"/>
+        <result property="completedPanels" column="completed_panels" jdbcType="INTEGER"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="startTime" column="start_time" jdbcType="TIMESTAMP"/>
+        <result property="completeTime" column="complete_time" jdbcType="TIMESTAMP"/>
+        <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="update_time" jdbcType="TIMESTAMP"/>
+        <result property="isDelete" column="is_delete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, task_uuid, user_id, novel_id, task_type, status, progress_percent, current_step,
+        total_panels, completed_panels, error_message, start_time, complete_time, 
+        create_time, update_time, is_delete
+    </sql>
+
+</mapper>

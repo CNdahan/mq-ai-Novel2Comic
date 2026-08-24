@@ -1,0 +1,6 @@
+{
+  "provider": "openai",
+  "apiKey": "your_llm_api_key",
+  "model": "your_llm_model",
+  "baseUrl": "https://api.openai.com/v1"
+}

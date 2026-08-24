@@ -1,0 +1,234 @@
+# =====================================================
+# Novel2Comic 生产环境配置文件
+# =====================================================
+# 使用说明：
+# 1. 修改数据库配置：url、username、password
+# 2. 修改Redis配置：host、port、password
+# 3. 配置真实的API Key（LLM和AIGC服务）
+# 4. 配置JWT密钥（务必修改为复杂的随机字符串）
+# 5. 启动命令：java -jar novel2comic.jar --spring.profiles.active=prod
+# =====================================================
+
+spring:
+  application:
+    name: mq-novel2comic-backend
+  
+  # ==================== 数据库配置 ====================
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 请修改为你的线上数据库地址、端口、数据库名
+    url: jdbc:mysql://your-db-host:3306/mq_novel2comic?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=true
+    # 请修改为你的数据库用户名
+    username: your_username
+    # 请修改为你的数据库密码
+    password: your_password
+    # 连接池配置（HikariCP）
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  # ==================== Redis配置 ====================
+  data:
+    redis:
+      # 请修改为你的Redis地址
+      host: your-redis-host
+      port: 6379
+      # 请修改为你的Redis密码（如果没有密码则留空）
+      password: your_redis_password
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-wait: -1ms
+          max-idle: 10
+          min-idle: 2
+  
+  # ==================== Spring AI 配置 ====================
+  ai:
+    dashscope:
+      # 阿里云通义千问 API Key（如果使用）
+      api-key: ${ALIYUN_API_KEY:your-dashscope-api-key}
+      embedding:
+        enabled: true
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.7
+      image:
+        wanx:
+          model: wanx-v1
+          default-size: 512*512
+
+# ==================== 服务器配置 ====================
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+  # 生产环境压缩配置
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,application/javascript,text/css
+  # Tomcat配置
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    max-connections: 10000
+    accept-count: 100
+
+# ==================== API文档配置 ====================
+springdoc:
+  group-configs:
+    - group: 'default'
+      packages-to-scan: com.mq.novel2comic.controller
+  # 生产环境可以选择关闭API文档（安全考虑）
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+# ==================== knife4j配置 ====================
+knife4j:
+  # 生产环境建议关闭（安全考虑），或者设置访问密码
+  enable: true
+  setting:
+    language: zh_cn
+  # 可选：启用HTTP Basic认证保护API文档
+  # basic:
+  #   enable: true
+  #   username: admin
+  #   password: your_password
+
+# ==================== MyBatis Plus配置 ====================
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false
+    # 生产环境关闭SQL日志
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDelete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ==================== JWT配置 ====================
+jwt:
+  # ⚠️ 务必修改为复杂的随机字符串（至少64位）
+  secret: PLEASE-CHANGE-THIS-TO-A-COMPLEX-RANDOM-SECRET-KEY-AT-LEAST-64-CHARACTERS-LONG-FOR-PRODUCTION-USE
+  # Token过期时间（秒）：86400秒 = 24小时，604800秒 = 7天
+  expiration: 604800
+
+# ==================== LLM提供商配置（文本生成）====================
+llm:
+  # 推荐使用：zhipu（智谱AI GLM-4-Flash）或 deepseek（DeepSeek-V3）
+  # 原因：速度快、质量好、价格便宜
+  provider: zhipu
+  
+  # 智谱AI配置（推荐）⭐⭐⭐⭐⭐
+  zhipu:
+    # 请替换为你的智谱AI API Key
+    # 获取地址：https://open.bigmodel.cn/
+    api-key: ${ZHIPU_API_KEY:your-zhipu-api-key}
+    model: glm-4-flash  # 或 glm-4
+    base-url: https://open.bigmodel.cn/api/paas/v4
+  
+  # DeepSeek配置（备选，性价比极高）⭐⭐⭐⭐⭐
+  deepseek:
+    # 请替换为你的DeepSeek API Key
+    # 获取地址：https://platform.deepseek.com/
+    api-key: ${DEEPSEEK_API_KEY:your-deepseek-api-key}
+    model: deepseek-chat
+    base-url: https://api.deepseek.com
+
+# ==================== AIGC服务配置（图片生成）====================
+aigc:
+  # 推荐使用：siliconflow（硅基流动）
+  # 原因：速度快（5-15秒/张）、质量好、支持多种模型
+  provider: siliconflow
+  
+  # 硅基流动配置（推荐）⭐⭐⭐⭐⭐
+  siliconflow:
+    # 请替换为你的硅基流动 API Key
+    # 获取地址：https://siliconflow.cn/
+    api-key: ${SILICONFLOW_API_KEY:your-siliconflow-api-key}
+    # 推荐模型（按优先级）：
+    # 1. black-forest-labs/FLUX.1-schnell: 质量最好，速度快
+    # 2. stabilityai/stable-diffusion-xl-base-1.0: SDXL基础模型
+    # 3. stabilityai/sd-turbo: 极速模式
+    model: black-forest-labs/FLUX.1-schnell
+    base-url: https://api.siliconflow.cn/v1
+
+# ==================== 图片存储配置 ====================
+image:
+  storage:
+    # 生产环境建议使用绝对路径，或者配置到专门的存储目录
+    # 例如：/data/novel2comic/images/ 或 /var/www/images/
+    path: /data/novel2comic/images/
+    # 可选：配置图片访问URL前缀（如果使用CDN或对象存储）
+    # url-prefix: https://cdn.yourdomain.com/images/
+
+# ==================== 日志配置 ====================
+logging:
+  level:
+    root: INFO
+    com.mq.novel2comic: INFO
+    # 可选：调试特定模块
+    # com.mq.novel2comic.service: DEBUG
+  file:
+    # 日志文件路径
+    path: /var/log/novel2comic
+    name: /var/log/novel2comic/application.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  logback:
+    rollingpolicy:
+      # 日志文件最大大小
+      max-file-size: 100MB
+      # 保留的日志文件天数
+      max-history: 30
+      # 日志总大小限制
+      total-size-cap: 10GB
+
+# ==================== 安全配置 ====================
+# 可选：添加更多安全配置
+# management:
+#   endpoints:
+#     web:
+#       exposure:
+#         # 生产环境限制暴露的端点
+#         include: health,info
+#   endpoint:
+#     health:
+#       show-details: when-authorized
+
+# ==================== 性能监控配置 ====================
+# 可选：集成Actuator进行监控
+# management:
+#   metrics:
+#     export:
+#       prometheus:
+#         enabled: true
+#   endpoint:
+#     prometheus:
+#       enabled: true
+
+# =====================================================
+# ⚠️ 生产环境部署检查清单：
+# =====================================================
+# ✅ 1. 修改数据库配置（url、username、password）
+# ✅ 2. 修改Redis配置（host、port、password）
+# ✅ 3. 替换所有API Key（LLM、AIGC服务）
+# ✅ 4. 修改JWT密钥为复杂随机字符串
+# ✅ 5. 创建图片存储目录并设置权限
+# ✅ 6. 创建日志目录并设置权限
+# ✅ 7. 执行完整的数据库建表脚本
+# ✅ 8. 配置反向代理（Nginx）和HTTPS证书
+# ✅ 9. 配置防火墙规则
+# ✅ 10. 设置定时备份策略
+# =====================================================
+

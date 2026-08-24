@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.NovelMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.Novel">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="userId" column="userId" jdbcType="BIGINT"/>
+            <result property="novelTitle" column="novelTitle" jdbcType="VARCHAR"/>
+            <result property="novelContent" column="novelContent" jdbcType="VARCHAR"/>
+            <result property="contentLength" column="contentLength" jdbcType="INTEGER"/>
+            <result property="sourceType" column="sourceType" jdbcType="VARCHAR"/>
+            <result property="sourceUrl" column="sourceUrl" jdbcType="VARCHAR"/>
+            <result property="status" column="status" jdbcType="VARCHAR"/>
+            <result property="errorMessage" column="errorMessage" jdbcType="VARCHAR"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,userId,novelTitle,
+        novelContent,contentLength,sourceType,
+        sourceUrl,status,errorMessage,
+        createTime,updateTime,isDelete
+    </sql>
+</mapper>

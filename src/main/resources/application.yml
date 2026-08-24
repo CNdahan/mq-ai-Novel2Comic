@@ -1,0 +1,119 @@
+spring:
+  application:
+    name: mq-novel2comic-backend
+  profiles:
+    active: local
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/mq_novel2comic?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${DB_PASSWORD:123456}
+  # Redis配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 
+      database: 6
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+  # Spring AI 阿里云通义千问配置
+  ai:
+    dashscope:
+      api-key: ${ALIYUN_API_KEY:你的密钥}
+      embedding:
+        enabled: true  # 开启Embedding功能
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.7
+      image:
+        wanx:
+          # 模型选择（阿里云通义万相）：
+          # - wanx-v1: 基础模型，慢（5-10分钟/张）但所有Key都支持 ✅
+          # - wanx-sketch-to-image-lite: 草图模型（可能需要特殊权限）
+          # 开发调试推荐：使用dev profile启用Mock客户端（1-2秒/张）
+          model: wanx-v1
+          default-size: 512*512  # 小尺寸加快生成速度50%
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+
+# springdoc-openapi
+springdoc:
+  group-configs:
+    - group: 'default'
+      packages-to-scan: com.mq.novel2comic.controller
+# knife4j
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false
+    # 仅在开发环境开启日志
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDelete # 全局逻辑删除的实体字段名
+      logic-delete-value: 1 # 逻辑已删除值（默认为 1）
+      logic-not-delete-value: 0 # 逻辑未删除值（默认为 0）
+
+# JWT配置
+jwt:
+  secret: ${JWT_SECRET:mq-novel2comic-dev-secret-change-me}
+  expiration: 86400 # Token过期时间（86400秒 = 24小时）
+
+# LLM提供商配置（文本生成）
+llm:
+  # 提供商选择：
+  # - openai: GPT/OpenAI 兼容接口（默认，推荐通过前端配置）
+  # - grok: xAI Grok（通过前端配置）
+  # - zhipu: 智谱AI GLM-4-Flash
+  # - deepseek: DeepSeek-V3（快，便宜）⭐⭐⭐⭐⭐
+  # - dashscope: 阿里云通义千问（慢，默认）⭐⭐
+  provider: openai
+
+  # 智谱AI配置
+  zhipu:
+    api-key: ${ZHIPU_API_KEY:your-api-key}
+    model: glm-4-flash  # 或 glm-4（更准确但稍慢）
+    base-url: https://open.bigmodel.cn/api/paas/v4
+    
+  # DeepSeek配置
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:你的DeepSeek密钥}
+    model: deepseek-chat
+    base-url: https://api.deepseek.com
+
+# AIGC服务配置（图片生成）
+aigc:
+  # 提供商选择：
+  # - wanx: 阿里云通义万相（慢，5-10分钟/张）
+  # - siliconflow: 硅基流动（快，5-15秒/张）⭐推荐
+  # - mock: Mock模式（极快，1-2秒/张，仅开发用）
+  provider: siliconflow
+
+  # 硅基流动配置
+  siliconflow:
+    api-key: ${SILICONFLOW_API_KEY:your-api-key}
+    # 模型选择（推荐按优先级）：
+    # 1. black-forest-labs/FLUX.1-schnell: 质量最好，速度快（⭐推荐）
+    # 2. stabilityai/stable-diffusion-xl-base-1.0: SDXL基础模型，性价比高
+    # 3. stabilityai/sd-turbo: 极速模式，质量稍低
+    model: black-forest-labs/FLUX.1-schnell
+    base-url: https://api.siliconflow.cn/v1
+
+# 图片存储配置（解决OSS URL过期问题）
+image:
+  storage:
+    path: ./images/  # 图片存储目录（相对于项目根目录）
+

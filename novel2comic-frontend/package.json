@@ -1,0 +1,29 @@
+{
+  "name": "novel2comic-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Novel2Comic - 基于AI的小说转漫画自动化生成平台前端",
+  "author": "Novel2Comic Team",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@stomp/stompjs": "^7.2.1",
+    "axios": "^1.12.2",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.11.5",
+    "pinia": "^3.0.3",
+    "sockjs-client": "^1.6.1",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^7.1.7"
+  }
+}

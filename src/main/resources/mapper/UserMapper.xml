@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.UserMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.User">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="userName" column="userName" jdbcType="VARCHAR"/>
+            <result property="userEmail" column="userEmail" jdbcType="VARCHAR"/>
+            <result property="userPassword" column="userPassword" jdbcType="VARCHAR"/>
+            <result property="userAvatar" column="userAvatar" jdbcType="VARCHAR"/>
+            <result property="quotaRemain" column="quotaRemain" jdbcType="INTEGER"/>
+            <result property="quotaTotal" column="quotaTotal" jdbcType="INTEGER"/>
+            <result property="vipLevel" column="vipLevel" jdbcType="TINYINT"/>
+            <result property="vipExpireAt" column="vipExpireAt" jdbcType="TIMESTAMP"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,userName,userEmail,
+        userPassword,userAvatar,quotaRemain,
+        quotaTotal,vipLevel,vipExpireAt,
+        createTime,updateTime,isDelete
+    </sql>
+</mapper>

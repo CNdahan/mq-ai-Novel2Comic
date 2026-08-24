@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mq.novel2comic.mapper.CharacterProfileMapper">
+
+    <resultMap id="BaseResultMap" type="com.mq.novel2comic.model.entity.CharacterProfile">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="novelId" column="novelId" jdbcType="BIGINT"/>
+            <result property="characterName" column="characterName" jdbcType="VARCHAR"/>
+            <result property="descriptionCn" column="descriptionCn" jdbcType="VARCHAR"/>
+            <result property="descriptionEn" column="descriptionEn" jdbcType="VARCHAR"/>
+            <result property="appearanceData" column="appearanceData" jdbcType="OTHER"/>
+            <result property="referenceImageUrl" column="referenceImageUrl" jdbcType="VARCHAR"/>
+            <result property="embeddingVector" column="embeddingVector" jdbcType="OTHER"/>
+            <result property="vectorId" column="vectorId" jdbcType="VARCHAR"/>
+            <result property="useCount" column="useCount" jdbcType="INTEGER"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,novelId,characterName,
+        descriptionCn,descriptionEn,appearanceData,
+        referenceImageUrl,embeddingVector,vectorId,
+        useCount,createTime,updateTime,
+        isDelete
+    </sql>
+</mapper>
