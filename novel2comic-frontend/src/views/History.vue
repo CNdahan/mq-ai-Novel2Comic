@@ -10,9 +10,13 @@
             <span class="filter-label">状态筛选：</span>
             <el-radio-group v-model="queryParams.status" @change="handleFilterChange">
               <el-radio-button label="all">全部</el-radio-button>
-              <el-radio-button label="completed">已完成</el-radio-button>
-              <el-radio-button label="generating">生成中</el-radio-button>
-              <el-radio-button label="failed">失败</el-radio-button>
+              <el-radio-button label="uploaded">已上传小说</el-radio-button>
+              <el-radio-button label="storyboard_pending">待生成分镜</el-radio-button>
+              <el-radio-button label="storyboard_generating">生成分镜中</el-radio-button>
+              <el-radio-button label="storyboard_completed">已生成分镜</el-radio-button>
+              <el-radio-button label="image_pending">待生成图片</el-radio-button>
+              <el-radio-button label="image_generating">生成图片中</el-radio-button>
+              <el-radio-button label="completed">生成成功</el-radio-button>
             </el-radio-group>
           </div>
           
@@ -24,6 +28,20 @@
               <el-radio-button label="chinese">国风漫画</el-radio-button>
               <el-radio-button label="realistic">写实风格</el-radio-button>
             </el-radio-group>
+          </div>
+          <div v-if="comicList.length > 0" class="batch-actions">
+            <el-checkbox
+              :model-value="allCurrentPageSelected"
+              :indeterminate="isIndeterminate"
+              @change="handleSelectAll"
+            >全选本页</el-checkbox>
+            <span v-if="selectedComicIds.length > 0" class="selected-count">已选择 {{ selectedComicIds.length }} 个</span>
+            <el-button
+              type="danger"
+              :icon="Delete"
+              :disabled="selectedComicIds.length === 0"
+              @click="handleBatchDelete"
+            >批量删除</el-button>
           </div>
         </div>
       </el-card>
@@ -40,8 +58,14 @@
           <div 
             class="comic-card" 
             v-for="comic in comicList" 
-            :key="comic.comicId"
+            :key="comic.novelId"
           >
+            <el-checkbox
+              class="comic-selector"
+              :model-value="selectedComicIds.includes(comic.novelId)"
+              @click.stop
+              @change="handleSelectComic(comic.novelId, $event)"
+            />
             <!-- 删除按钮 -->
             <div class="card-actions">
               <el-button 
@@ -49,13 +73,13 @@
                 size="small" 
                 circle
                 :icon="Delete"
-                @click.stop="handleDeleteComic(comic.comicId, comic.title)"
+                @click.stop="handleDeleteComic(comic, comic.title)"
                 title="删除作品"
               />
             </div>
             
             <!-- 封面图 -->
-            <div class="comic-cover" @click="handleComicClick(comic.comicId)">
+            <div class="comic-cover" @click="handleComicClick(comic.novelId)">
               <el-image
                 v-if="comic.coverImage"
                 :src="comic.coverImage"
@@ -85,12 +109,13 @@
             </div>
             
             <!-- 漫画信息 -->
-            <div class="comic-info" @click="handleComicClick(comic.comicId)">
+            <div class="comic-info" @click="handleComicClick(comic.novelId)">
               <h3 class="comic-title" :title="comic.title">{{ comic.title }}</h3>
               <p class="novel-title" :title="comic.novelTitle">📖 {{ comic.novelTitle }}</p>
               
               <div class="comic-meta">
                 <el-tag 
+                  v-if="comic.style"
                   :type="getStyleType(comic.style)" 
                   size="small" 
                   effect="plain"
@@ -129,11 +154,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, PictureFilled, Clock, Delete } from '@element-plus/icons-vue'
-import { getComicList, deleteComic } from '@/api/comic'
+import { getWorkflowList } from '@/api/novel'
+import { deleteNovel } from '@/api/novel'
 
 const router = useRouter()
 
@@ -146,8 +172,26 @@ const queryParams = ref({
 })
 
 const loading = ref(false)
-const comicList = ref([])
-const total = ref(0)
+const allWorkList = ref([])
+const filteredWorkList = computed(() => allWorkList.value.filter(item => {
+  const statusMatch = queryParams.value.status === 'all' || item.status === queryParams.value.status
+  const styleMatch = queryParams.value.style === 'all' || item.style === queryParams.value.style
+  return statusMatch && styleMatch
+}))
+const comicList = computed(() => {
+  const start = (queryParams.value.current - 1) * queryParams.value.pageSize
+  return filteredWorkList.value.slice(start, start + queryParams.value.pageSize)
+})
+const total = computed(() => filteredWorkList.value.length)
+const selectedComicIds = ref([])
+
+const allCurrentPageSelected = computed(() =>
+  comicList.value.length > 0 && comicList.value.every(comic => selectedComicIds.value.includes(comic.novelId))
+)
+
+const isIndeterminate = computed(() =>
+  selectedComicIds.value.length > 0 && !allCurrentPageSelected.value
+)
 
 onMounted(() => {
   loadComicList()
@@ -157,10 +201,11 @@ onMounted(() => {
 const loadComicList = async () => {
   loading.value = true
   try {
-    const response = await getComicList(queryParams.value)
+    const response = await getWorkflowList()
     if (response.code === 200 && response.data) {
-      comicList.value = response.data.records || []
-      total.value = response.data.total || 0
+      allWorkList.value = response.data || []
+      const currentPageIds = new Set(comicList.value.map(comic => comic.novelId))
+      selectedComicIds.value = selectedComicIds.value.filter(id => currentPageIds.has(id))
     } else {
       ElMessage.error(response.message || '加载作品列表失败')
     }
@@ -190,12 +235,70 @@ const handlePageChange = () => {
 }
 
 // 点击漫画卡片
-const handleComicClick = (comicId) => {
-  router.push(`/preview/${comicId}`)
+const handleComicClick = (novelId) => {
+  const work = allWorkList.value.find(item => item.novelId === novelId)
+  if (!work) return
+  if (work.status === 'completed' && work.comicId) {
+    router.push(`/preview/${work.comicId}`)
+  } else if ((work.status === 'image_generating' || work.status === 'storyboard_generating') && work.taskId) {
+    router.push(`/progress/${work.taskId}`)
+  } else if (work.status === 'storyboard_completed' || work.status === 'image_pending') {
+    router.push(`/storyboard/${work.novelId}`)
+  } else {
+    router.push(`/character/${work.novelId}`)
+  }
 }
 
 // 删除漫画
-const handleDeleteComic = async (comicId, title) => {
+const handleSelectComic = (novelId, selected) => {
+  selectedComicIds.value = selected
+    ? [...selectedComicIds.value, novelId]
+    : selectedComicIds.value.filter(id => id !== novelId)
+}
+
+const handleSelectAll = (selected) => {
+  selectedComicIds.value = selected ? comicList.value.map(comic => comic.novelId) : []
+}
+
+const handleBatchDelete = async () => {
+  const novelIds = [...selectedComicIds.value]
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除选中的 ' + novelIds.length + ' 个作品吗？删除后无法恢复，本地图片也将被清理。',
+      '批量删除确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        distinguishCancelAndClose: true
+      }
+    )
+
+    loading.value = true
+    const selectedWorks = allWorkList.value.filter(work => novelIds.includes(work.novelId))
+    for (const work of selectedWorks) {
+      await deleteNovel(work.novelId)
+    }
+    if (selectedWorks.length === novelIds.length) {
+      selectedComicIds.value = []
+      ElMessage.success('作品删除成功')
+      if (comicList.value.length === novelIds.length && queryParams.value.current > 1) {
+        queryParams.value.current--
+      }
+      await loadComicList()
+    }
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('批量删除作品失败:', error)
+      ElMessage.error('批量删除失败，请稍后重试')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// 删除漫画
+const handleDeleteComic = async (work, title) => {
   try {
     await ElMessageBox.confirm(
       `确定要删除作品《${title}》吗？删除后无法恢复，本地图片也将被清理。`,
@@ -210,7 +313,7 @@ const handleDeleteComic = async (comicId, title) => {
     
     // 开始删除
     loading.value = true
-    const response = await deleteComic(comicId)
+    const response = await deleteNovel(work.novelId)
     
     if (response.code === 200) {
       ElMessage.success('作品删除成功')
@@ -232,6 +335,12 @@ const handleDeleteComic = async (comicId, title) => {
 // 获取状态类型
 const getStatusClass = (status) => {
   const classMap = {
+    uploaded: 'status-uploaded',
+    storyboard_pending: 'status-pending',
+    storyboard_completed: 'status-storyboard',
+    storyboard_generating: 'status-generating',
+    image_pending: 'status-pending',
+    image_generating: 'status-generating',
     completed: 'status-completed',
     generating: 'status-generating',
     failed: 'status-failed'
@@ -242,7 +351,13 @@ const getStatusClass = (status) => {
 // 获取状态文本
 const getStatusText = (status) => {
   const textMap = {
-    completed: '已完成',
+    uploaded: '已上传小说',
+    storyboard_pending: '待生成分镜',
+    storyboard_completed: '已生成分镜',
+    storyboard_generating: '生成分镜中',
+    image_pending: '待生成图片',
+    image_generating: '生成图片中',
+    completed: '生成成功图片',
     generating: '生成中',
     failed: '失败'
   }
@@ -352,6 +467,18 @@ const formatTime = (dateTime) => {
   min-width: 90px;
 }
 
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.selected-count {
+  color: #606266;
+  font-size: 14px;
+}
+
 .filter-item :deep(.el-radio-button__inner) {
   border-radius: 8px;
   margin: 0 4px;
@@ -386,6 +513,17 @@ const formatTime = (dateTime) => {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.comic-selector {
+  position: absolute;
+  top: 12px;
+  left: 52px;
+  z-index: 10;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .comic-card:hover {
@@ -502,6 +640,21 @@ const formatTime = (dateTime) => {
   animation: pulse 2s ease-in-out infinite;
 }
 
+.status-uploaded {
+  background: rgba(114, 46, 209, 0.9);
+  color: #ffffff;
+}
+
+.status-pending {
+  background: rgba(230, 162, 60, 0.95);
+  color: #ffffff;
+}
+
+.status-storyboard {
+  background: rgba(19, 194, 194, 0.95);
+  color: #ffffff;
+}
+
 .status-failed {
   background: rgba(245, 34, 45, 0.9);
   color: #ffffff;
@@ -611,6 +764,12 @@ const formatTime = (dateTime) => {
   
   .filter-label {
     min-width: auto;
+  }
+
+  .batch-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px;
   }
   
   .comic-grid {

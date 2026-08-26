@@ -96,6 +96,20 @@ public class ImageStorageServiceImpl implements ImageStorageService {
     public boolean exists(Long comicId, int panelIndex) {
         return Files.exists(Paths.get(storagePath, findExistingFilename(comicId, panelIndex)));
     }
+
+    @Override
+    public byte[] readImage(Long comicId, int panelIndex) {
+        try {
+            Path filePath = Paths.get(storagePath, findExistingFilename(comicId, panelIndex));
+            if (!Files.exists(filePath)) {
+                return null;
+            }
+            return Files.readAllBytes(filePath);
+        } catch (IOException e) {
+            log.error("读取图片失败: comicId={}, panelIndex={}", comicId, panelIndex, e);
+            return null;
+        }
+    }
     
     @Override
     public String getLocalUrl(Long comicId, int panelIndex) {

@@ -214,6 +214,9 @@
           <el-descriptions-item label="Base URL">
             {{ aigcConfig.baseUrl || '-' }}
           </el-descriptions-item>
+          <el-descriptions-item label="图片分辨率">
+            {{ aigcConfig.resolution === '2k' ? '2K（费用较高）' : '1K（默认）' }}
+          </el-descriptions-item>
         </el-descriptions>
       </el-card>
     </div>
@@ -573,6 +576,16 @@
             @blur="loadAigcModels"
           />
         </el-form-item>
+
+        <el-form-item label="图片分辨率">
+          <el-select
+            v-model="aigcConfigForm.resolution"
+            style="width: 100%"
+          >
+            <el-option label="1K（默认，费用较低）" value="1k" />
+            <el-option label="2K（更清晰，费用较高）" value="2k" />
+          </el-select>
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -717,14 +730,16 @@ const aigcConfig = reactive({
   provider: 'siliconflow',
   apiKey: '',
   model: 'black-forest-labs/FLUX.1-schnell',
-  baseUrl: 'https://api.siliconflow.cn/v1/images/generations'
+  baseUrl: 'https://api.siliconflow.cn/v1/images/generations',
+  resolution: '1k'
 })
 
 const aigcConfigForm = reactive({
   provider: 'siliconflow',
   apiKey: '',
   model: 'black-forest-labs/FLUX.1-schnell',
-  baseUrl: 'https://api.siliconflow.cn/v1/images/generations'
+  baseUrl: 'https://api.siliconflow.cn/v1/images/generations',
+  resolution: '1k'
 })
 
 // 计算VIP是否有效
@@ -816,7 +831,9 @@ const loadAigcConfig = async () => {
   try {
     const response = await getAigcConfig()
     if (response.code === 200 && response.data) {
-      Object.assign(aigcConfig, response.data)
+      Object.assign(aigcConfig, response.data, {
+        resolution: response.data.resolution || '1k'
+      })
       await loadAigcModels()
     }
   } catch (error) {
@@ -1095,7 +1112,9 @@ const handleResetAiConfig = async () => {
 }
 
 const handleEditAigcConfig = () => {
-  Object.assign(aigcConfigForm, aigcConfig)
+  Object.assign(aigcConfigForm, aigcConfig, {
+    resolution: aigcConfig.resolution || '1k'
+  })
   aigcConfigDialogVisible.value = true
   loadAigcModels()
 }
@@ -1112,10 +1131,13 @@ const handleSaveAigcConfig = async () => {
       provider: aigcConfigForm.provider,
       apiKey: aigcConfigForm.apiKey,
       model: aigcConfigForm.model,
-      baseUrl: aigcConfigForm.baseUrl
+      baseUrl: aigcConfigForm.baseUrl,
+      resolution: aigcConfigForm.resolution || '1k'
     })
     if (response.code === 200) {
-      Object.assign(aigcConfig, response.data)
+      Object.assign(aigcConfig, response.data, {
+        resolution: response.data.resolution || '1k'
+      })
       ElMessage.success('AIGC配置保存成功')
       aigcConfigDialogVisible.value = false
     } else {
@@ -1138,7 +1160,8 @@ const handleResetAigcConfig = async () => {
         provider: 'siliconflow',
         apiKey: '',
         model: 'black-forest-labs/FLUX.1-schnell',
-        baseUrl: 'https://api.siliconflow.cn/v1/images/generations'
+        baseUrl: 'https://api.siliconflow.cn/v1/images/generations',
+        resolution: '1k'
       }
       Object.assign(aigcConfig, next)
       Object.assign(aigcConfigForm, next)

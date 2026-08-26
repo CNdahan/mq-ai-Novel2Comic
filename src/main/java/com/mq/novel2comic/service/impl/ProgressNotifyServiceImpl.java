@@ -86,6 +86,26 @@ public class ProgressNotifyServiceImpl implements ProgressNotifyService {
             log.error("推送完成通知失败: taskId={}", taskId, e);
         }
     }
+
+    @Override
+    public void notifyStoryboardCompleted(String taskId, Long novelId) {
+        if (messagingTemplate == null) {
+            return;
+        }
+        try {
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", "completed");
+            message.put("taskId", taskId);
+            message.put("taskType", "storyboard_generation");
+            message.put("novelId", novelId);
+            message.put("status", "completed");
+            message.put("timestamp", System.currentTimeMillis());
+            messagingTemplate.convertAndSend(TOPIC_PREFIX + taskId, message);
+            log.info("分镜生成任务完成通知: taskId={}, novelId={}", taskId, novelId);
+        } catch (Exception e) {
+            log.error("推送分镜完成通知失败: taskId={}", taskId, e);
+        }
+    }
     
     /**
      * 推送任务失败

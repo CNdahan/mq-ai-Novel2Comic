@@ -19,6 +19,11 @@ public class ImageGenerateResult {
      * 分镜ID
      */
     private Long storyboardId;
+
+    /**
+     * 原始分镜序号
+     */
+    private Integer panelIndex;
     
     /**
      * 图片URL

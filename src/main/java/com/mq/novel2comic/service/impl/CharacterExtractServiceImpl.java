@@ -111,6 +111,8 @@ public class CharacterExtractServiceImpl implements CharacterExtractService {
                     novelId, profiles.size(), characters.size());
 
             return profiles;
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("提取并存储角色失败：novelId={}", novelId, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "提取并存储角色失败: " + e.getMessage());

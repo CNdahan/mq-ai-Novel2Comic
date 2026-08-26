@@ -20,6 +20,9 @@ public class ComicListItemResponse {
      * 漫画ID
      */
     private Long comicId;
+
+    /** 最近一次生成任务ID */
+    private String taskId;
     
     /**
      * 漫画标题
@@ -42,7 +45,7 @@ public class ComicListItemResponse {
     private String style;
     
     /**
-     * 状态：generating/completed/failed
+     * 工作流状态：uploaded/storyboard_pending/storyboard_completed/image_pending/image_generating/completed
      */
     private String status;
     

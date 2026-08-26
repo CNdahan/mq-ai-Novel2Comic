@@ -85,6 +85,14 @@ export function deleteComic(comicId) {
   })
 }
 
+export function batchDeleteComics(comicIds) {
+  return request({
+    url: '/comic/batch',
+    method: 'delete',
+    data: { comicIds }
+  })
+}
+
 /**
  * 代理获取图片（解决OSS 403问题）
  * @param {string} imageUrl - 图片URL
@@ -103,6 +111,26 @@ export function regeneratePanel(comicId, panelIndex) {
   return request({
     url: `/comic/${comicId}/panel/${panelIndex}/regenerate`,
     method: 'post'
+  })
+}
+
+/** 下载已生成的分镜图片ZIP，可选择是否绘制小说对白字幕。 */
+export function downloadComicPanels(comicId, subtitles = true) {
+  return request({
+    url: `/comic/${comicId}/download`,
+    method: 'get',
+    responseType: 'blob',
+    params: { subtitles }
+  })
+}
+
+/** 下载按列数编排后的PNG图片，可选择是否绘制小说对白字幕。 */
+export function downloadComicLayout(comicId, columns = 1, subtitles = true) {
+  return request({
+    url: `/comic/${comicId}/layout`,
+    method: 'get',
+    params: { columns, subtitles },
+    responseType: 'blob'
   })
 }
 

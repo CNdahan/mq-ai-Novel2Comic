@@ -18,7 +18,7 @@ public class RestTemplateConfig {
     public RestTemplate restTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000); // 10秒连接超时
-        factory.setReadTimeout(30000);    // 30秒读取超时
+        factory.setReadTimeout(120000);   // 中转站图片文件下载可能超过30秒
         return new RestTemplate(factory);
     }
 }

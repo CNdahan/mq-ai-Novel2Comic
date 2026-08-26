@@ -33,4 +33,9 @@ public class AigcConfig {
      * 接口地址
      */
     private String baseUrl;
+
+    /**
+     * 图片分辨率：1k / 2k
+     */
+    private String resolution;
 }

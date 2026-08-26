@@ -44,11 +44,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     
     @Autowired
     private ProgressNotifyService progressNotifyService;
+
+    @Autowired
+    private AigcConfigService aigcConfigService;
     
     /**
      * 默认图片尺寸
      */
-    private static final String DEFAULT_SIZE = "1024*1024";
+    private static final String DEFAULT_SIZE = ImageSizePolicy.sizeFor(ImageSizePolicy.DEFAULT_RESOLUTION);
     
     /**
      * 单个分镜异步生成
@@ -60,6 +63,24 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             String taskId,
             StoryboardPanel storyboard,
             String style) {
+        return generatePanelAsyncInternal(taskId, storyboard, style, false);
+    }
+
+    @Override
+    @Async("comicTaskExecutor")
+    public CompletableFuture<ImageGenerateResult> generatePanelAsync(
+            String taskId,
+            StoryboardPanel storyboard,
+            String style,
+            boolean forceRegenerate) {
+        return generatePanelAsyncInternal(taskId, storyboard, style, forceRegenerate);
+    }
+
+    private CompletableFuture<ImageGenerateResult> generatePanelAsyncInternal(
+            String taskId,
+            StoryboardPanel storyboard,
+            String style,
+            boolean forceRegenerate) {
         long startTime = System.currentTimeMillis();
         int panelIndex = storyboard.getPanelIndex();
         try {
@@ -68,12 +89,18 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             // 1. 构建Prompt
             String prompt = promptBuilderService.buildFinalPrompt(storyboard, style);
             String negativePrompt = promptBuilderService.buildNegativePrompt();
+            String cacheScope = ImageCacheScope.from(aigcConfigService.getConfig());
             log.debug("Prompt构建完成: panelIndex={}, prompt={}", panelIndex, prompt);
-            // 2. 检查语义缓存
+            // 2. 普通批量生成检查语义缓存；单张重新生成必须跳过缓存。
             progressNotifyService.notifyProgress(
                     taskId, panelIndex, 0, "检查缓存..."
             );
-            Optional<CachedImage> cachedImage = semanticCacheService.checkCache(prompt);
+            Optional<CachedImage> cachedImage = forceRegenerate
+                    ? Optional.empty()
+                    : semanticCacheService.checkCache(prompt, cacheScope);
+            if (forceRegenerate) {
+                log.info("🔄 分镜{}：强制重新生成，跳过语义缓存", panelIndex);
+            }
             if (cachedImage.isPresent()) {
                 // 缓存命中，直接返回
                 CachedImage cached = cachedImage.get();
@@ -86,13 +113,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 return CompletableFuture.completedFuture(
                         ImageGenerateResult.builder()
                                 .storyboardId(storyboard.getId())
+                                .panelIndex(panelIndex)
                                 .imageUrl(cached.getImageUrl())
                                 .prompt(prompt)
                                 .isCached(true)
                                 .cacheSimilarity(cached.getSimilarity())
                                 .generateTimeMs((int) duration)
-                                .imageWidth(1024)
-                                .imageHeight(1024)
+                                .imageWidth(configuredImageDimension())
+                                .imageHeight(configuredImageDimension())
                                 .build()
                 );
             }
@@ -107,7 +135,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                     DEFAULT_SIZE
             );
             // 4. 缓存结果
-            semanticCacheService.cacheImage(prompt, imageUrl);
+            semanticCacheService.cacheImage(prompt, imageUrl, cacheScope);
             long duration = System.currentTimeMillis() - startTime;
             log.info("✅ 分镜{}：生成完成，耗时={}ms, url={}", 
                     panelIndex, duration, imageUrl);
@@ -117,13 +145,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             return CompletableFuture.completedFuture(
                     ImageGenerateResult.builder()
                             .storyboardId(storyboard.getId())
+                            .panelIndex(panelIndex)
                             .imageUrl(imageUrl)
                             .prompt(prompt)
                             .isCached(false)
                             .cacheSimilarity(null)
                             .generateTimeMs((int) duration)
-                            .imageWidth(1024)
-                            .imageHeight(1024)
+                            .imageWidth(configuredImageDimension())
+                            .imageHeight(configuredImageDimension())
                             .build()
             );
             
@@ -162,13 +191,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                         generatePanelAsync(taskId, storyboard, style);
                 futures.add(future);
             }
-            // 2. 等待所有任务完成
-            CompletableFuture<Void> allOf = CompletableFuture.allOf(
-                    futures.toArray(new CompletableFuture[0])
-            );
-            // 阻塞等待所有任务完成
-            allOf.join();
-            // 3. 收集结果
+            // 2. 逐个收集结果。单张失败不能抹掉已经成功生成的图片。
             List<ImageGenerateResult> results = new ArrayList<>();
             int successCount = 0;
             int cachedCount = 0;
@@ -183,7 +206,19 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                         }
                     }
                 } catch (Exception e) {
-                    log.error("获取分镜{}结果失败", i + 1, e);
+                    StoryboardPanel failedStoryboard = storyboards.get(i);
+                    log.warn("分镜{}首次生成失败，准备自动重试", failedStoryboard.getPanelIndex(), e);
+                    ImageGenerateResult retryResult = retryPanel(taskId, failedStoryboard, style);
+                    if (retryResult != null) {
+                        results.add(retryResult);
+                        successCount++;
+                        if (retryResult.getIsCached()) {
+                            cachedCount++;
+                        }
+                    } else {
+                        log.error("分镜{}重试后仍失败，保留其他已成功分镜",
+                                failedStoryboard.getPanelIndex());
+                    }
                 }
             }
             long totalDuration = System.currentTimeMillis() - startTime;
@@ -208,6 +243,23 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, 
                     "批量生成失败: " + e.getMessage());
         }
+    }
+
+    private ImageGenerateResult retryPanel(String taskId, StoryboardPanel storyboard, String style) {
+        try {
+            return generatePanelAsync(taskId, storyboard, style).get();
+        } catch (Exception retryException) {
+            log.error("分镜{}自动重试失败", storyboard.getPanelIndex(), retryException);
+            return null;
+        }
+    }
+
+    private int configuredImageDimension() {
+        if (aigcConfigService == null || aigcConfigService.getConfig() == null) {
+            return 1024;
+        }
+        return "2k".equals(ImageSizePolicy.normalizeResolution(
+                aigcConfigService.getConfig().getResolution())) ? 2048 : 1024;
     }
 }
 

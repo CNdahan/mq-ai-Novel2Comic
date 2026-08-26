@@ -4,8 +4,10 @@
       <template #header>
         <div class="header-content">
           <h2>
-            <span v-if="taskStatus === 'completed'">✅ 漫画生成完成</span>
+            <span v-if="taskStatus === 'completed' && taskType === 'storyboard_generation'">分镜生成完成</span>
+            <span v-else-if="taskStatus === 'completed'">✅ 漫画生成完成</span>
             <span v-else-if="taskStatus === 'failed'">❌ 生成失败</span>
+            <span v-else-if="taskType === 'storyboard_generation'">正在生成分镜...</span>
             <span v-else>⏱️ 正在生成漫画...</span>
           </h2>
           <div class="task-info">
@@ -128,7 +130,14 @@
         <!-- 操作按钮 -->
         <div class="action-buttons">
           <!-- 完成状态 -->
-          <template v-if="taskStatus === 'completed'">
+          <template v-if="taskStatus === 'completed' && taskType === 'storyboard_generation'">
+            <el-button type="primary" size="large" @click="handleViewStoryboard">
+              查看分镜
+            </el-button>
+            <el-button size="large" @click="handleBack">返回首页</el-button>
+          </template>
+
+          <template v-else-if="taskStatus === 'completed'">
             <el-button
               v-if="comicId"
               type="primary"
@@ -195,11 +204,13 @@ const userStore = useUserStore()
 // 任务信息
 const taskUuid = ref(route.params.taskId || '')
 const taskStatus = ref('processing') // processing, completed, failed
+const taskType = ref('')
 const progress = ref(0)
 const currentStep = ref('初始化任务...')
 const completedPanels = ref(0)
 const totalPanels = ref(0)
 const comicId = ref(null)
+const novelId = ref(null)
 const errorMessage = ref('')
 const startTime = ref(null)
 const completeTime = ref(null)
@@ -303,6 +314,8 @@ const handleTaskComplete = async (data) => {
     comicId.value = data.comicId
     console.log('获取到comicId:', comicId.value)
   }
+  if (data.taskType) taskType.value = data.taskType
+  if (data.novelId) novelId.value = data.novelId
   
   // 更新完成的分镜数量
   if (totalPanels.value > 0) {
@@ -318,7 +331,7 @@ const handleTaskComplete = async (data) => {
   await userStore.refreshUserInfo()
   
   ElMessage.success({
-    message: '🎉 漫画生成完成！',
+    message: taskType.value === 'storyboard_generation' ? '分镜生成完成！' : '🎉 漫画生成完成！',
     type: 'success',
     duration: 3000
   })
@@ -336,7 +349,7 @@ const handleTaskError = (data) => {
     clearInterval(pollingTimer)
   }
   
-  ElMessage.error('漫画生成失败')
+  ElMessage.error(taskType.value === 'storyboard_generation' ? '分镜生成失败' : '漫画生成失败')
 }
 
 // 轮询获取任务进度
@@ -349,6 +362,8 @@ const fetchTaskProgress = async () => {
       
       // 更新任务信息
       taskStatus.value = task.status
+      taskType.value = task.taskType || ''
+      novelId.value = task.novelId || null
       progress.value = task.progressPercent || 0
       currentStep.value = task.currentStep || '处理中'
       completedPanels.value = task.completedPanels || 0
@@ -366,8 +381,8 @@ const fetchTaskProgress = async () => {
           completedPanels.value = totalPanels.value
         }
         
-        // 如果还没有comicId，尝试从novelId查询
-        if (!comicId.value) {
+        // 漫画生成任务完成后查询漫画ID；分镜任务直接返回分镜页。
+        if (taskType.value !== 'storyboard_generation' && !comicId.value) {
           await fetchComicId()
         }
         
@@ -376,7 +391,7 @@ const fetchTaskProgress = async () => {
           clearInterval(pollingTimer)
         }
         
-        if (!comicId.value) {
+        if (taskType.value !== 'storyboard_generation' && !comicId.value) {
           console.warn('任务完成但未获取到comicId')
         }
       }
@@ -390,7 +405,7 @@ const fetchTaskProgress = async () => {
           clearInterval(pollingTimer)
         }
         
-        ElMessage.error('漫画生成失败')
+        ElMessage.error(taskType.value === 'storyboard_generation' ? '分镜生成失败' : '漫画生成失败')
       }
     }
   } catch (error) {
@@ -440,6 +455,14 @@ const handleViewResult = () => {
       message: '漫画ID未找到，请稍后重试',
       duration: 3000
     })
+  }
+}
+
+const handleViewStoryboard = () => {
+  if (novelId.value) {
+    router.push(`/storyboard/${novelId.value}`)
+  } else {
+    ElMessage.warning('小说ID未找到，请稍后重试')
   }
 }
 

@@ -74,6 +74,8 @@ jwt:
 
 # LLM提供商配置（文本生成）
 llm:
+  # 单次 LLM 请求最长等待时间，较慢的中转站可适当提高，前端请求上限为5分钟
+  request-timeout-seconds: 180
   # 提供商选择：
   # - openai: GPT/OpenAI 兼容接口（默认，推荐通过前端配置）
   # - grok: xAI Grok（通过前端配置）
@@ -101,6 +103,8 @@ aigc:
   # - siliconflow: 硅基流动（快，5-15秒/张）⭐推荐
   # - mock: Mock模式（极快，1-2秒/张，仅开发用）
   provider: siliconflow
+  # 图片默认分辨率：1k（费用较低）或 2k
+  resolution: 1k
 
   # 硅基流动配置
   siliconflow:

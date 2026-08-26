@@ -17,14 +17,14 @@ public interface SemanticCacheService {
      * @param prompt 待检查的Prompt
      * @return 缓存的图片信息（如果命中）
      */
-    Optional<CachedImage> checkCache(String prompt);
+    Optional<CachedImage> checkCache(String prompt, String cacheScope);
     
     /**
      * 缓存新生成的图片
      * @param prompt 使用的Prompt
      * @param imageUrl 图片URL
      */
-    void cacheImage(String prompt, String imageUrl);
+    void cacheImage(String prompt, String imageUrl, String cacheScope);
     
     /**
      * 清除过期缓存

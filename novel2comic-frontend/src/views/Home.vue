@@ -103,7 +103,7 @@
       <div class="process-section">
         <h2>使用流程</h2>
         <el-steps :active="4" align-center class="steps">
-          <el-step title="上传小说" description="输入300-3000字小说文本" />
+          <el-step title="上传小说" description="输入300-10000字小说文本" />
           <el-step title="确认角色" description="AI识别角色，可手动调整" />
           <el-step title="设计分镜" description="AI自动生成分镜脚本" />
           <el-step title="生成漫画" description="2-3分钟生成精美漫画" />

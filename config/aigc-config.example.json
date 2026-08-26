@@ -2,5 +2,6 @@
   "provider": "openai",
   "apiKey": "your_aigc_api_key",
   "model": "your_image_model",
-  "baseUrl": "https://api.openai.com/v1/images/generations"
+  "baseUrl": "https://api.openai.com/v1/images/generations",
+  "resolution": "1k"
 }

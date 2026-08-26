@@ -42,6 +42,25 @@ export function getNovelList(params) {
 }
 
 /**
+ * 重新提取小说角色，无需重新上传原文。
+ * @param {number|string} novelId - 小说ID
+ */
+export function retryCharacterExtraction(novelId) {
+  return request({
+    url: `/novel/${novelId}/retry-character-extraction`,
+    method: 'post'
+  })
+}
+
+/** 获取包含小说、分镜和图片阶段的创作工作流列表。 */
+export function getWorkflowList() {
+  return request({
+    url: '/novel/workflow-list',
+    method: 'get'
+  })
+}
+
+/**
  * 删除小说
  * @param {number} novelId - 小说ID
  */

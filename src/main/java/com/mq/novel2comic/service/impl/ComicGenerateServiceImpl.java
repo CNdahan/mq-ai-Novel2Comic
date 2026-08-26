@@ -11,12 +11,12 @@ import com.mq.novel2comic.model.entity.*;
 import com.mq.novel2comic.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /**
  * 漫画生成核心业务编排服务
@@ -57,19 +57,17 @@ public class ComicGenerateServiceImpl {
     
     @Resource
     private ImageStorageService imageStorageService;
+
+    @Resource(name = "comicTaskExecutor")
+    private Executor comicTaskExecutor;
     
     /**
      * 核心方法：完整的漫画生成流程
      */
-    @Transactional(rollbackFor = Exception.class)
     public ComicGenerateResponse generateComic(ComicGenerateRequest request, Long userId) {
         Long novelId = request.getNovelId();
-        String style = request.getStyle();
-        Boolean regenerateStoryboard = request.getRegenerateStoryboard();
-        Integer storyboardVersion = request.getStoryboardVersion();
-        log.info("开始生成漫画：novelId={}, userId={}, style={}, regenerate={}, version={}", 
-                novelId, userId, style, regenerateStoryboard, storyboardVersion);
-        // 1. 验证小说存在
+        // The HTTP request must return promptly so the frontend can follow task progress.
+        // Image generation and image downloads can take several minutes.
         Novel novel = novelService.getById(novelId);
         if (novel == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "小说不存在");
@@ -78,51 +76,61 @@ public class ComicGenerateServiceImpl {
         if (!novel.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限操作此小说");
         }
-        // 2. 创建任务
+
         String taskId = IdUtil.simpleUUID();
-        GenerateTask task = createTask(taskId, novelId, userId);
+        createTask(taskId, novelId, userId);
         try {
-            // 3. 获取或生成分镜（支持指定版本）
+            comicTaskExecutor.execute(() -> runGeneration(request, userId, taskId));
+        } catch (Exception e) {
+            generateTaskService.failTask(taskId, e.getMessage());
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "创建漫画生成任务失败");
+        }
+
+        return ComicGenerateResponse.builder()
+                .taskId(taskId)
+                .status("processing")
+                .panelCount(null)
+                .estimatedTime("预计数分钟")
+                .build();
+    }
+
+    private void runGeneration(ComicGenerateRequest request, Long userId, String taskId) {
+        Long novelId = request.getNovelId();
+        String style = request.getStyle();
+        try {
+            log.info("开始后台生成漫画：taskId={}, novelId={}, userId={}, style={}",
+                    taskId, novelId, userId, style);
+            Novel novel = novelService.getById(novelId);
+            if (novel == null || !novel.getUserId().equals(userId)) {
+                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "小说不存在或无权限访问");
+            }
+
             List<StoryboardPanel> storyboards = getOrCreateStoryboards(
-                    novelId, novel.getNovelContent(), regenerateStoryboard, storyboardVersion
+                    novelId, novel.getNovelContent(), request.getRegenerateStoryboard(), request.getStoryboardVersion()
             );
             if (storyboards.isEmpty()) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "分镜生成失败，请重试");
             }
-            log.info("分镜准备完成：novelId={}, 分镜数={}", novelId, storyboards.size());
-            // 更新任务信息
+            GenerateTask task = generateTaskService.getByTaskUuid(taskId);
+            if (task == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "生成任务不存在");
+            }
             task.setTotalPanels(storyboards.size());
             task.setCompletedPanels(0);
             generateTaskService.updateById(task);
-            // 4. 批量生成图片（异步并行）
+
             generateTaskService.updateProgress(taskId, 10, "开始生成图片");
-            List<ImageGenerateResult> images = imageGenerateService.generateBatch(
-                    taskId, storyboards, style
-            );
-            log.info("图片生成完成：novelId={}, 成功={}/{}", 
-                    novelId, images.size(), storyboards.size());
-            // 5. 保存漫画
+            List<ImageGenerateResult> images = imageGenerateService.generateBatch(taskId, storyboards, style);
+            log.info("图片生成完成：taskId={}, 成功={}/{}", taskId, images.size(), storyboards.size());
+
             generateTaskService.updateProgress(taskId, 90, "保存漫画数据");
             Comic comic = saveComic(novel, images, style, task);
-            // 6. 更新任务状态
             generateTaskService.completeTask(taskId);
-            // 7. 推送完成通知（包含comicId）
             progressNotifyService.notifyCompleted(taskId, comic.getId());
-            log.info("漫画生成完成：novelId={}, comicId={}", novelId, comic.getId());
-            // 8. 计算预估时间
-            String estimatedTime = calculateEstimatedTime(images.size());
-            return ComicGenerateResponse.builder()
-                    .comicId(comic.getId())
-                    .taskId(taskId)
-                    .status("completed")
-                    .panelCount(images.size())
-                    .estimatedTime(estimatedTime)
-                    .build();
+            log.info("漫画生成完成：taskId={}, comicId={}", taskId, comic.getId());
         } catch (Exception e) {
-            log.error("漫画生成失败：novelId={}", novelId, e);
+            log.error("漫画生成失败：taskId={}, novelId={}", taskId, novelId, e);
             generateTaskService.failTask(taskId, e.getMessage());
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, 
-                    "漫画生成失败: " + e.getMessage());
         }
     }
     
@@ -231,7 +239,7 @@ public class ComicGenerateServiceImpl {
             String localUrl = imageStorageService.downloadAndSave(
                 ossUrl, 
                 comic.getId(), 
-                i + 1
+                image.getPanelIndex() == null ? i + 1 : image.getPanelIndex()
             );
             // 处理下载失败的情况
             String finalUrl;
@@ -249,7 +257,7 @@ public class ComicGenerateServiceImpl {
             panel.setComicId(comic.getId());
             panel.setNovelId(novel.getId());
             panel.setStoryboardId(image.getStoryboardId());
-            panel.setPanelIndex(i + 1);
+            panel.setPanelIndex(image.getPanelIndex() == null ? i + 1 : image.getPanelIndex());
             panel.setImageUrl(finalUrl);
             panel.setPromptText(image.getPrompt());
             panel.setGenerateTimeMs(image.getGenerateTimeMs());

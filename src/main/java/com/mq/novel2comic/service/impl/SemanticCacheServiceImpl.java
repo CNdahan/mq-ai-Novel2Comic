@@ -54,7 +54,7 @@ public class SemanticCacheServiceImpl implements SemanticCacheService {
      * 检查语义缓存
      */
     @Override
-    public Optional<CachedImage> checkCache(String prompt) {
+    public Optional<CachedImage> checkCache(String prompt, String cacheScope) {
         try {
             long startTime = System.currentTimeMillis();
             
@@ -75,6 +75,12 @@ public class SemanticCacheServiceImpl implements SemanticCacheService {
             for (String cacheKey : cacheKeys) {
                 Map<String, Object> cached = (Map<String, Object>) redisTemplate.opsForValue().get(cacheKey);
                 if (cached == null) {
+                    continue;
+                }
+
+                // Entries created before cache scoping (or for another model/resolution)
+                // must not be returned for the current request.
+                if (!Objects.equals(cacheScope, cached.get("cacheScope"))) {
                     continue;
                 }
                 
@@ -120,20 +126,22 @@ public class SemanticCacheServiceImpl implements SemanticCacheService {
      * 缓存新生成的图片
      */
     @Override
-    public void cacheImage(String prompt, String imageUrl) {
+    public void cacheImage(String prompt, String imageUrl, String cacheScope) {
         try {
             // 1. 向量化Prompt
             List<Double> embedding = embedPrompt(prompt);
             
             // 2. 生成缓存键（使用MD5避免键过长）
-            String cacheKey = CACHE_KEY_PREFIX + 
-                    DigestUtils.md5DigestAsHex(prompt.getBytes());
+            String cacheKey = CACHE_KEY_PREFIX +
+                    DigestUtils.md5DigestAsHex((cacheScope + "\n" + prompt)
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
             
             // 3. 构建缓存数据
             Map<String, Object> cacheData = new HashMap<>();
             cacheData.put("embedding", embedding);
             cacheData.put("imageUrl", imageUrl);
             cacheData.put("prompt", prompt);
+            cacheData.put("cacheScope", cacheScope);
             cacheData.put("timestamp", System.currentTimeMillis());
             
             // 4. 存入Redis，设置6小时过期

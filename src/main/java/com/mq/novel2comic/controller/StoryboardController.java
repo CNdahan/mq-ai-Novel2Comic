@@ -13,6 +13,7 @@ import com.mq.novel2comic.model.dto.storyboard.StoryboardResponse;
 import com.mq.novel2comic.model.dto.storyboard.UpdateStoryboardRequest;
 import com.mq.novel2comic.model.entity.Novel;
 import com.mq.novel2comic.model.entity.StoryboardPanel;
+import com.mq.novel2comic.model.entity.GenerateTask;
 import com.mq.novel2comic.model.enums.SceneTypeEnum;
 import com.mq.novel2comic.model.enums.ShotTypeEnum;
 import com.mq.novel2comic.service.NovelService;
@@ -20,6 +21,8 @@ import com.mq.novel2comic.service.StoryboardPanelService;
 import com.mq.novel2comic.service.StoryboardService;
 import com.mq.novel2comic.service.StoryboardValidator;
 import com.mq.novel2comic.service.StoryboardVersionService;
+import com.mq.novel2comic.service.GenerateTaskService;
+import com.mq.novel2comic.service.ProgressNotifyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.concurrent.Executor;
 
 /**
  * 分镜控制器
@@ -56,6 +60,15 @@ public class StoryboardController {
     @Resource
     private StoryboardVersionService storyboardVersionService;
 
+    @Resource
+    private GenerateTaskService generateTaskService;
+
+    @Resource
+    private ProgressNotifyService progressNotifyService;
+
+    @Resource(name = "comicTaskExecutor")
+    private Executor comicTaskExecutor;
+
     /**
      * 为小说生成分镜（支持多版本）
      * 
@@ -71,53 +84,99 @@ public class StoryboardController {
             @RequestParam(required = false, defaultValue = "true") Boolean keepOld,
             @RequestParam(required = false, defaultValue = "true") Boolean setCurrent,
             @RequestParam(required = false) String versionNote) {
-        log.info("开始为小说生成分镜, novelId: {}, keepOld: {}, versionNote: {}", 
+        log.info("创建分镜生成任务, novelId: {}, keepOld: {}, versionNote: {}",
                 novelId, keepOld, versionNote);
         // 1. 查询小说
         Novel novel = novelService.getById(novelId);
         if (novel == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "小说不存在");
         }
-        // 2. 解析小说
-        NovelStructure structure = novelService.parseNovel(novel.getNovelContent());
-        // 3. 生成分镜脚本
-        List<com.mq.novel2comic.model.dto.novel.StoryboardPanel> panels = 
-                storyboardService.generateStoryboard(structure);
-        if (panels == null || panels.isEmpty()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "分镜生成失败，请重试");
+        String taskId = cn.hutool.core.util.IdUtil.simpleUUID();
+        createStoryboardTask(taskId, novel);
+        comicTaskExecutor.execute(() -> runStoryboardGeneration(
+                taskId, novel, keepOld, setCurrent, versionNote));
+        StoryboardGenerateResponse response = StoryboardGenerateResponse.builder()
+                .novelId(novelId)
+                .taskId(taskId)
+                .status("processing")
+                .message("分镜生成任务已创建，请在进度页面查看")
+                .build();
+        return ResultUtils.success(response);
+    }
+
+    private void createStoryboardTask(String taskId, Novel novel) {
+        GenerateTask task = new GenerateTask();
+        task.setTaskUuid(taskId);
+        task.setUserId(novel.getUserId());
+        task.setNovelId(novel.getId());
+        task.setTaskType("storyboard_generation");
+        task.setStatus("processing");
+        task.setProgressPercent(0);
+        task.setCurrentStep("正在解析小说并生成分镜");
+        task.setCompletedPanels(0);
+        task.setStartTime(new Date());
+        task.setCreateTime(new Date());
+        task.setUpdateTime(new Date());
+        task.setIsDelete(0);
+        if (!generateTaskService.save(task)) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "创建分镜生成任务失败");
         }
-        // 4. 确定版本号
+    }
+
+    private void runStoryboardGeneration(String taskId, Novel novel, Boolean keepOld,
+                                         Boolean setCurrent, String versionNote) {
+        try {
+            NovelStructure structure = novelService.parseNovel(novel.getNovelContent());
+            generateTaskService.updateProgress(taskId, 35, "小说解析完成，正在设计分镜");
+            List<com.mq.novel2comic.model.dto.novel.StoryboardPanel> panels =
+                    storyboardService.generateStoryboard(structure);
+            if (panels == null || panels.isEmpty()) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "分镜生成失败，请重试");
+            }
+            generateTaskService.updateProgress(taskId, 80, "分镜设计完成，正在保存");
+            Integer version = saveStoryboardPanels(novel.getId(), panels, keepOld, setCurrent, versionNote);
+            GenerateTask task = generateTaskService.getByTaskUuid(taskId);
+            if (task != null) {
+                task.setTotalPanels(panels.size());
+                task.setCompletedPanels(panels.size());
+                generateTaskService.updateById(task);
+            }
+            generateTaskService.completeTask(taskId);
+            progressNotifyService.notifyStoryboardCompleted(taskId, novel.getId());
+            log.info("分镜生成完成, novelId: {}, version: {}, 分镜数: {}", novel.getId(), version, panels.size());
+        } catch (Exception e) {
+            log.error("分镜生成失败: taskId={}, novelId={}", taskId, novel.getId(), e);
+            generateTaskService.failTask(taskId, e.getMessage());
+        }
+    }
+
+    private Integer saveStoryboardPanels(Long novelId,
+                                         List<com.mq.novel2comic.model.dto.novel.StoryboardPanel> panels,
+                                         Boolean keepOld, Boolean setCurrent, String versionNote) {
         Integer version;
-        if (keepOld) {
-            // 保留旧版本，生成新版本
+        if (Boolean.TRUE.equals(keepOld)) {
             version = storyboardVersionService.getNextVersion(novelId);
-            log.info("生成新版本, version: {}", version);
         } else {
-            // 覆盖模式：删除所有旧版本，使用版本1
             QueryWrapper<StoryboardPanel> deleteWrapper = new QueryWrapper<>();
-            deleteWrapper.eq("novelId", novelId);
-            deleteWrapper.eq("isDelete", 0);
-            long deletedCount = storyboardPanelService.count(deleteWrapper);
-            if (deletedCount > 0) {
+            deleteWrapper.eq("novelId", novelId).eq("isDelete", 0);
+            if (storyboardPanelService.count(deleteWrapper) > 0) {
                 storyboardPanelService.remove(deleteWrapper);
-                log.info("覆盖模式：删除旧分镜数据, novelId: {}, 数量: {}", novelId, deletedCount);
             }
             version = 1;
         }
-        // 5. 保存新分镜到数据库
         for (int i = 0; i < panels.size(); i++) {
             com.mq.novel2comic.model.dto.novel.StoryboardPanel panel = panels.get(i);
             StoryboardPanel entity = new StoryboardPanel();
             entity.setNovelId(novelId);
             entity.setVersion(version);
-            entity.setIsCurrent(setCurrent ? 1 : 0);
+            entity.setIsCurrent(Boolean.TRUE.equals(setCurrent) ? 1 : 0);
             entity.setVersionNote(versionNote);
             entity.setPanelIndex(i + 1);
             entity.setSceneType(panel.getSceneType());
             entity.setShotType(panel.getShotType());
             entity.setDescriptionCn(panel.getDescriptionCn());
-            entity.setDescriptionEn(panel.getPrompt());
-            // 直接设置List对象，JacksonTypeHandler会自动处理JSON序列化
+            entity.setDescriptionEn(panel.getPrompt() != null && !panel.getPrompt().isBlank()
+                    ? panel.getPrompt() : panel.getDescriptionCn());
             entity.setCharacterList(panel.getCharacters());
             entity.setEnvironment(panel.getEnvironment());
             entity.setMood(panel.getMood());
@@ -125,19 +184,10 @@ public class StoryboardController {
             entity.setIsDelete(0);
             storyboardPanelService.save(entity);
         }
-        // 6. 如果设置为当前版本，需要将其他版本标记为非当前
-        if (setCurrent) {
+        if (Boolean.TRUE.equals(setCurrent)) {
             storyboardVersionService.setCurrentVersion(novelId, version);
         }
-        log.info("分镜生成完成, novelId: {}, version: {}, 分镜数: {}", novelId, version, panels.size());
-        // 7. 构建响应
-        StoryboardGenerateResponse response = StoryboardGenerateResponse.builder()
-                .novelId(novelId)
-                .panelCount(panels.size())
-                .status("completed")
-                .message("分镜生成成功（版本 " + version + "）")
-                .build();
-        return ResultUtils.success(response);
+        return version;
     }
     
     /**
@@ -267,9 +317,11 @@ public class StoryboardController {
         if (storyboard == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "分镜不存在");
         }
-        // 软删除
-        storyboard.setIsDelete(1);
-        boolean result = storyboardPanelService.updateById(storyboard);
+        // 使用 MyBatis-Plus 逻辑删除 API，确保生成 UPDATE ... SET isDelete=1。
+        boolean result = storyboardPanelService.removeById(id);
+        if (!result) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "删除失败");
+        }
         return ResultUtils.success(result);
     }
 

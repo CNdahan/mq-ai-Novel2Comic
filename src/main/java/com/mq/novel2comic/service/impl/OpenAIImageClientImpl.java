@@ -27,6 +27,8 @@ import java.time.Duration;
 @Service
 public class OpenAIImageClientImpl implements OpenAIImageClient {
 
+    private static final int MAX_ATTEMPTS = 3;
+
     @Value("${aigc.openai.api-key:}")
     private String apiKey;
 
@@ -52,7 +54,7 @@ public class OpenAIImageClientImpl implements OpenAIImageClient {
             AigcConfig config = resolveConfig();
             validateConfig(config);
             String fullPrompt = mergePrompt(prompt, negativePrompt);
-            String normalizedSize = normalizeSize(size);
+            String normalizedSize = ImageSizePolicy.sizeFor(config.getResolution());
             log.info("🚀 [GPT Image] 开始生成图片, model={}, size={}", config.getModel(), normalizedSize);
 
             ObjectNode requestBody = objectMapper.createObjectNode();
@@ -69,11 +71,11 @@ public class OpenAIImageClientImpl implements OpenAIImageClient {
                     .timeout(Duration.ofSeconds(120))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendWithRetry(httpRequest);
             if (response.statusCode() != 200) {
                 log.error("GPT Image API调用失败: statusCode={}, body={}", response.statusCode(), response.body());
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,
-                        "图片生成失败: HTTP " + response.statusCode() + "，请检查 AIGC Base URL 和 API Key");
+                        "图片生成失败: HTTP " + response.statusCode() + "，中转站响应: " + summarizeBody(response.body()));
             }
 
             String responseBody = response.body();
@@ -93,6 +95,32 @@ public class OpenAIImageClientImpl implements OpenAIImageClient {
         }
     }
 
+    private HttpResponse<String> sendWithRetry(HttpRequest request) throws Exception {
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (!isTransientStatus(response.statusCode()) || attempt == MAX_ATTEMPTS) {
+                return response;
+            }
+            log.warn("GPT Image中转站临时失败: HTTP {}, 第 {}/{} 次请求，准备重试",
+                    response.statusCode(), attempt, MAX_ATTEMPTS);
+            Thread.sleep(500L * attempt);
+        }
+        return response;
+    }
+
+    private boolean isTransientStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private String summarizeBody(String body) {
+        if (body == null || body.isBlank()) {
+            return "空响应";
+        }
+        String normalized = body.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 300 ? normalized : normalized.substring(0, 300) + "...";
+    }
+
     private AigcConfig resolveConfig() {
         AigcConfig config = aigcConfigService.getConfig();
         if ("openai".equals(config.getProvider())) {
@@ -103,6 +131,7 @@ public class OpenAIImageClientImpl implements OpenAIImageClient {
                 .apiKey(apiKey)
                 .model(defaultModel)
                 .baseUrl(defaultBaseUrl)
+                .resolution(ImageSizePolicy.DEFAULT_RESOLUTION)
                 .build();
     }
 
@@ -123,13 +152,6 @@ public class OpenAIImageClientImpl implements OpenAIImageClient {
             return prompt;
         }
         return prompt + "\nAvoid: " + negativePrompt;
-    }
-
-    private String normalizeSize(String size) {
-        if (StrUtil.isBlank(size)) {
-            return "1024x1024";
-        }
-        return size.replace("*", "x");
     }
 
     private String extractImageUri(ImageGenerationResponse response) {

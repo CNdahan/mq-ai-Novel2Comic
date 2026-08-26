@@ -27,6 +27,8 @@ import java.time.Duration;
 @Service
 public class XaiImageClientImpl implements XaiImageClient {
 
+    private static final int MAX_ATTEMPTS = 3;
+
     @Value("${aigc.grok.api-key:}")
     private String apiKey;
 
@@ -52,9 +54,9 @@ public class XaiImageClientImpl implements XaiImageClient {
             AigcConfig config = resolveConfig();
             validateConfig(config);
             String fullPrompt = mergePrompt(prompt, negativePrompt);
-            String normalizedSize = normalizeSize(size);
+            String normalizedSize = ImageSizePolicy.sizeFor(config.getResolution());
             String aspectRatio = resolveAspectRatio(normalizedSize);
-            String resolution = resolveResolution(normalizedSize);
+            String resolution = ImageSizePolicy.grokResolution(config.getResolution());
             log.info("🚀 [Grok Imagine] 开始生成图片, model={}, size={}, aspectRatio={}, resolution={}",
                     config.getModel(), normalizedSize, aspectRatio, resolution);
 
@@ -73,11 +75,12 @@ public class XaiImageClientImpl implements XaiImageClient {
                     .timeout(Duration.ofSeconds(120))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
+            HttpResponse<String> response = sendWithRetry(httpRequest);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.error("Grok Imagine API调用失败: statusCode={}, body={}", response.statusCode(), response.body());
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,
-                        "图片生成失败: HTTP " + response.statusCode() + "，请检查 AIGC Base URL 和 API Key");
+                        "图片生成失败: HTTP " + response.statusCode() + "，中转站响应: "
+                                + summarizeBody(response.body()));
             }
 
             String responseBody = response.body();
@@ -97,6 +100,32 @@ public class XaiImageClientImpl implements XaiImageClient {
         }
     }
 
+    private HttpResponse<String> sendWithRetry(HttpRequest request) throws Exception {
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (!isTransientStatus(response.statusCode()) || attempt == MAX_ATTEMPTS) {
+                return response;
+            }
+            log.warn("Grok Imagine 中转站临时失败: HTTP {}, 第 {}/{} 次请求，准备重试，响应: {}",
+                    response.statusCode(), attempt, MAX_ATTEMPTS, summarizeBody(response.body()));
+            Thread.sleep(500L * attempt);
+        }
+        return response;
+    }
+
+    private boolean isTransientStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private String summarizeBody(String body) {
+        if (body == null || body.isBlank()) {
+            return "空响应";
+        }
+        String normalized = body.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 300 ? normalized : normalized.substring(0, 300) + "...";
+    }
+
     private AigcConfig resolveConfig() {
         AigcConfig config = aigcConfigService.getConfig();
         if ("grok".equals(config.getProvider())) {
@@ -107,6 +136,7 @@ public class XaiImageClientImpl implements XaiImageClient {
                 .apiKey(apiKey)
                 .model(defaultModel)
                 .baseUrl(defaultBaseUrl)
+                .resolution(ImageSizePolicy.DEFAULT_RESOLUTION)
                 .build();
     }
 
@@ -129,13 +159,6 @@ public class XaiImageClientImpl implements XaiImageClient {
         return prompt + "\nAvoid: " + negativePrompt;
     }
 
-    private String normalizeSize(String size) {
-        if (StrUtil.isBlank(size)) {
-            return "1024x1024";
-        }
-        return size.replace("*", "x");
-    }
-
     private String resolveAspectRatio(String size) {
         String[] parts = size.toLowerCase().split("x");
         if (parts.length != 2) {
@@ -150,21 +173,6 @@ public class XaiImageClientImpl implements XaiImageClient {
             return width > height ? "16:9" : "9:16";
         } catch (Exception e) {
             return "1:1";
-        }
-    }
-
-    private String resolveResolution(String size) {
-        String[] parts = size.toLowerCase().split("x");
-        if (parts.length != 2) {
-            return "1k";
-        }
-        try {
-            int width = Integer.parseInt(parts[0].trim());
-            int height = Integer.parseInt(parts[1].trim());
-            int max = Math.max(width, height);
-            return max >= 1536 ? "2k" : "1k";
-        } catch (Exception e) {
-            return "1k";
         }
     }
 

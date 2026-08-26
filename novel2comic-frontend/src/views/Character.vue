@@ -122,9 +122,19 @@
         <!-- 空状态 -->
         <el-empty
           v-else
-          description="暂无角色信息"
+          :description="extractFailed ? '角色提取失败，请检查 AI 配置后重试' : '暂无角色信息'"
           :image-size="200"
-        />
+        >
+          <el-button
+            v-if="extractFailed"
+            type="primary"
+            :icon="Refresh"
+            :loading="retrying"
+            @click="handleRetryExtraction"
+          >
+            重新提取角色
+          </el-button>
+        </el-empty>
 
         <!-- 底部操作 -->
         <div class="footer-actions">
@@ -192,6 +202,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getCharacterList, updateCharacter, deleteCharacter } from '@/api/character'
+import { retryCharacterExtraction } from '@/api/novel'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import {
   User,
@@ -204,7 +215,8 @@ import {
   View,
   CollectionTag,
   ArrowDown,
-  ArrowUp
+  ArrowUp,
+  Refresh
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -215,6 +227,8 @@ const loading = ref(false)
 const characters = ref([])
 const editDialogVisible = ref(false)
 const saving = ref(false)
+const retrying = ref(false)
+const extractFailed = ref(false)
 const editFormRef = ref(null)
 const editForm = ref({
   characterId: null,
@@ -274,6 +288,7 @@ const loadCharacters = async () => {
     // 确保响应数据结构正确
     if (response && response.data) {
       characters.value = Array.isArray(response.data) ? response.data : []
+      extractFailed.value = false
       console.log('✅ 角色列表加载成功，数量:', characters.value.length)
 
       // 打印角色名称列表（不打印完整对象）
@@ -293,8 +308,10 @@ const loadCharacters = async () => {
     console.error('获取角色列表失败:', error)
     console.error('错误详情:', error.response || error.message)
     // 显示更详细的错误信息
+    const errorMessage = error.response?.data?.message || error.response?.statusText || error.message || ''
+    extractFailed.value = errorMessage.includes('角色提取失败')
     if (error.response) {
-      ElMessage.error(`获取角色列表失败: ${error.response.data?.message || error.response.statusText}`)
+      ElMessage.error(`获取角色列表失败: ${errorMessage}`)
     } else if (error.request) {
       ElMessage.error('网络请求失败，请检查网络连接')
     } else {
@@ -303,6 +320,22 @@ const loadCharacters = async () => {
     characters.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// 角色提取失败后，直接使用已保存的小说内容重试。
+const handleRetryExtraction = async () => {
+  const novelId = route.params.novelId
+  retrying.value = true
+  try {
+    await retryCharacterExtraction(novelId)
+    ElMessage.success('角色重新提取成功')
+    await loadCharacters()
+  } catch (error) {
+    const message = error.response?.data?.message || error.message || '角色重新提取失败，请重试'
+    ElMessage.error(message)
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -392,10 +425,10 @@ const handleNext = async () => {
       }
     )
     
-    // 显示加载提示
+    // 接口只负责创建后台任务，实际生成在进度页跟踪。
     const loadingInstance = ElLoading.service({
       lock: true,
-      text: '正在生成分镜脚本，请稍候...',
+      text: '正在创建分镜生成任务...',
       background: 'rgba(0, 0, 0, 0.7)'
     })
     
@@ -405,15 +438,15 @@ const handleNext = async () => {
       const response = await generateStoryboard(novelId)
       
       if (response.code === 200) {
-        ElMessage.success('分镜脚本生成成功！')
-        // 跳转到分镜预览页面
-        router.push(`/storyboard/${novelId}`)
+        ElMessage.success('分镜生成任务已创建')
+        router.push(`/progress/${response.data.taskId}`)
       } else {
         ElMessage.error(response.message || '分镜生成失败')
       }
     } catch (error) {
       console.error('生成分镜失败:', error)
-      ElMessage.error('生成分镜失败，请稍后重试')
+      const message = error.response?.data?.message || error.message || '生成分镜失败，请稍后重试'
+      ElMessage.error(message)
     } finally {
       loadingInstance.close()
     }

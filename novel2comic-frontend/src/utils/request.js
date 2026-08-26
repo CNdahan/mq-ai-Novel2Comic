@@ -44,6 +44,10 @@ request.interceptors.response.use(
   response => {
     console.log('=== 响应拦截器 ===')
     console.log('响应状态:', response.status)
+
+    if (response.config.responseType === 'blob') {
+      return response
+    }
     
     const res = response.data
     console.log('res.code:', res.code)
@@ -93,7 +97,7 @@ request.interceptors.response.use(
           ElMessage.error('请求的资源不存在')
           break
         case 500:
-          ElMessage.error('服务器错误，请稍后重试')
+          ElMessage.error(data.message || '服务器错误，请稍后重试')
           break
         default:
           ElMessage.error(data.message || '未知错误')

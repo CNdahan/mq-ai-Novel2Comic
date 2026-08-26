@@ -36,6 +36,9 @@ import java.util.List;
 public class NovelServiceImpl extends ServiceImpl<NovelMapper, Novel>
     implements NovelService{
 
+    static final int MIN_CONTENT_LENGTH = 300;
+    static final int MAX_CONTENT_LENGTH = 10_000;
+
     @Resource
     private UnifiedLLMClient llmClient;
 
@@ -44,6 +47,9 @@ public class NovelServiceImpl extends ServiceImpl<NovelMapper, Novel>
 
     @Resource
     private com.mq.novel2comic.service.CharacterProfileService characterProfileService;
+
+    @Resource
+    private com.mq.novel2comic.service.CharacterConsistencyService characterConsistencyService;
 
     @Override
     public NovelStructure parseNovel(String text) {
@@ -114,8 +120,10 @@ public class NovelServiceImpl extends ServiceImpl<NovelMapper, Novel>
         // 参数校验
         ThrowUtils.throwIf(StrUtil.isBlank(request.getContent()), ErrorCode.PARAMS_ERROR, "小说内容不能为空");
         int contentLength = request.getContent().length();
-        ThrowUtils.throwIf(contentLength < 200, ErrorCode.PARAMS_ERROR, "小说内容不能少于300字符");
-        ThrowUtils.throwIf(contentLength > 3000, ErrorCode.PARAMS_ERROR, "小说内容不能超过3000字符");
+        ThrowUtils.throwIf(contentLength < MIN_CONTENT_LENGTH, ErrorCode.PARAMS_ERROR,
+                "小说内容不能少于" + MIN_CONTENT_LENGTH + "字符");
+        ThrowUtils.throwIf(contentLength > MAX_CONTENT_LENGTH, ErrorCode.PARAMS_ERROR,
+                "小说内容不能超过" + MAX_CONTENT_LENGTH + "字符");
         // 创建小说实体
         Novel novel = new Novel();
         novel.setUserId(userId);
@@ -159,6 +167,41 @@ public class NovelServiceImpl extends ServiceImpl<NovelMapper, Novel>
                 .estimatedTime(estimatedTime)
                 .characterCount(characterCount)  // 新增：返回提取到的角色数量
                 .build();
+    }
+
+    @Override
+    public boolean retryCharacterExtraction(Long novelId, Long userId) {
+        ThrowUtils.throwIf(novelId == null || novelId <= 0, ErrorCode.PARAMS_ERROR, "小说ID无效");
+        Novel novel = this.getById(novelId);
+        ThrowUtils.throwIf(novel == null, ErrorCode.NOT_FOUND_ERROR, "小说不存在");
+        ThrowUtils.throwIf(!userId.equals(novel.getUserId()), ErrorCode.NO_AUTH_ERROR, "无权操作该小说");
+        if ("processing".equals(novel.getStatus()) || "pending".equals(novel.getStatus())) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "角色提取处理中，请稍后重试");
+        }
+
+        // 清理上一次可能只写入了一部分的角色，避免重试后出现重复角色。
+        characterProfileService.remove(new LambdaQueryWrapper<CharacterProfile>()
+                .eq(CharacterProfile::getNovelId, novelId));
+        characterConsistencyService.clearCache(novelId, null);
+        novel.setStatus("processing");
+        novel.setErrorMessage(null);
+        this.updateById(novel);
+
+        try {
+            List<CharacterProfile> profiles = characterExtractService.extractAndStore(
+                    novelId, novel.getNovelContent());
+            novel.setStatus("completed");
+            novel.setErrorMessage(null);
+            this.updateById(novel);
+            log.info("角色重新提取完成：novelId={}, 提取到{}个角色", novelId, profiles.size());
+            return true;
+        } catch (Exception e) {
+            log.error("角色重新提取失败：novelId={}", novelId, e);
+            novel.setStatus("failed");
+            novel.setErrorMessage("角色提取失败: " + e.getMessage());
+            this.updateById(novel);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, novel.getErrorMessage());
+        }
     }
 
     @Override

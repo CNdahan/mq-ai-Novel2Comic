@@ -28,15 +28,15 @@
               v-model="uploadForm.novelContent"
               type="textarea"
               :rows="10"
-              placeholder="请输入小说文本（300-3000字）"
+              placeholder="请输入小说文本（300-10000字）"
               show-word-limit
-              maxlength="3000"
+              maxlength="10000"
             />
           </el-form-item>
 
           <el-form-item>
             <div class="word-count">
-              字数统计: {{ uploadForm.novelContent.length }} / 3000
+              字数统计: {{ uploadForm.novelContent.length }} / 10000
             </div>
           </el-form-item>
 
@@ -124,7 +124,7 @@ const uploadForm = reactive({
 const rules = {
   novelContent: [
     { required: true, message: '请输入小说内容', trigger: 'blur' },
-    { min: 300, max: 3000, message: '小说内容长度为300-3000字', trigger: 'blur' }
+    { min: 300, max: 10000, message: '小说内容长度为300-10000字', trigger: 'blur' }
   ],
   style: [
     { required: true, message: '请选择风格', trigger: 'change' }

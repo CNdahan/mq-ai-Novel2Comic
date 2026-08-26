@@ -23,6 +23,9 @@ public interface ProgressNotifyService {
      * @param comicId 生成的漫画ID
      */
     void notifyCompleted(String taskId, Long comicId);
+
+    /** 推送分镜生成任务完成 */
+    void notifyStoryboardCompleted(String taskId, Long novelId);
     
     /**
      * 推送任务失败

@@ -421,15 +421,15 @@ const handleGenerateStoryboard = async () => {
       const response = await generateStoryboard(novelId.value)
       
       if (response.code === 200) {
-        ElMessage.success('分镜脚本生成成功！')
-        // 重新加载分镜列表
-        await loadStoryboard()
+        ElMessage.success('分镜生成任务已创建')
+        router.push(`/progress/${response.data.taskId}`)
       } else {
         ElMessage.error(response.message || '分镜生成失败')
       }
     } catch (error) {
       console.error('生成分镜失败:', error)
-      ElMessage.error('生成分镜失败，请稍后重试')
+      const message = error.response?.data?.message || error.message || '生成分镜失败，请稍后重试'
+      ElMessage.error(message)
     } finally {
       generating.value = false
     }

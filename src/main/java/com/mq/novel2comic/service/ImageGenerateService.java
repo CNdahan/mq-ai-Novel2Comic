@@ -26,6 +26,18 @@ public interface ImageGenerateService {
             StoryboardPanel storyboard, 
             String style
     );
+
+    /**
+     * 生成单个分镜图片，可选择跳过语义缓存。
+     * 单个重新生成时必须跳过缓存，确保实际调用出图服务。
+     */
+    default CompletableFuture<ImageGenerateResult> generatePanelAsync(
+            String taskId,
+            StoryboardPanel storyboard,
+            String style,
+            boolean forceRegenerate) {
+        return generatePanelAsync(taskId, storyboard, style);
+    }
     
     /**
      * 批量并行生成

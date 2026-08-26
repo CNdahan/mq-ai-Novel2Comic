@@ -244,9 +244,15 @@ public class StoryboardServiceImpl implements StoryboardService {
             if (panel.getEnvironment() == null && scene.getLocation() != null) {
                 panel.setEnvironment(scene.getLocation());
             }
+            if (panel.getDescriptionCn() == null || panel.getDescriptionCn().isBlank()) {
+                panel.setDescriptionCn(defaultChineseDescription(scene));
+            }
+            if (panel.getPrompt() == null || panel.getPrompt().isBlank()) {
+                panel.setPrompt(defaultEnglishPrompt(scene));
+            }
             return panel;
         } catch (Exception e) {
-            log.error("解析分镜面板失败", e);
+            log.warn("解析分镜面板失败，使用降级分镜: index={}, reason={}", index, e.getMessage());
             // 返回默认分镜
             return StoryboardPanel.builder()
                     .id(IdUtil.simpleUUID())
@@ -257,7 +263,8 @@ public class StoryboardServiceImpl implements StoryboardService {
                     .environment(scene.getLocation())
                     .mood("neutral")
                     .originalText(scene.getContent())
-                    .descriptionCn(scene.getDescription())
+                    .descriptionCn(defaultChineseDescription(scene))
+                    .prompt(defaultEnglishPrompt(scene))
                     .build();
         }
     }
@@ -266,6 +273,9 @@ public class StoryboardServiceImpl implements StoryboardService {
      * 提取JSON内容
      */
     private String extractJson(String response) {
+        if (response == null || response.isBlank()) {
+            throw new IllegalArgumentException("LLM返回内容为空");
+        }
         String trimmed = response.trim();
         if (trimmed.startsWith("```json")) {
             trimmed = trimmed.substring(7);
@@ -275,6 +285,28 @@ public class StoryboardServiceImpl implements StoryboardService {
         if (trimmed.endsWith("```")) {
             trimmed = trimmed.substring(0, trimmed.length() - 3);
         }
-        return trimmed.trim();
+        trimmed = trimmed.trim();
+        // 兼容模型在JSON前后附加解释文字，只取最外层对象。
+        int objectStart = trimmed.indexOf('{');
+        int objectEnd = trimmed.lastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart) {
+            return trimmed.substring(objectStart, objectEnd + 1);
+        }
+        return trimmed;
+    }
+
+    private String defaultChineseDescription(SceneInfo scene) {
+        if (scene.getDescription() != null && !scene.getDescription().isBlank()) {
+            return scene.getDescription();
+        }
+        if (scene.getContent() != null && !scene.getContent().isBlank()) {
+            return scene.getContent();
+        }
+        return "根据小说场景生成的漫画画面";
+    }
+
+    private String defaultEnglishPrompt(SceneInfo scene) {
+        String description = defaultChineseDescription(scene);
+        return "Detailed comic panel illustration based on the following scene: " + description;
     }
 }

@@ -17,6 +17,39 @@
                 </el-tag>
               </div>
             </div>
+            <div class="preview-actions">
+              <el-switch
+                v-model="includeSubtitles"
+                active-text="下载含对白"
+                inactive-text="下载原图"
+              />
+              <el-select v-model="layoutColumns" size="small" class="layout-select" aria-label="编排列数">
+                <el-option :value="1" label="单列长图" />
+                <el-option :value="2" label="两列排版" />
+                <el-option :value="3" label="三列排版" />
+              </el-select>
+              <el-button
+                type="primary"
+                plain
+                size="small"
+                :loading="layoutDownloading"
+                :disabled="generatedPanelCount === 0"
+                @click="handleDownloadLayout"
+              >
+                <el-icon><Grid /></el-icon>
+                批量编排
+              </el-button>
+              <el-button
+                type="success"
+                size="small"
+                :loading="zipDownloading"
+                :disabled="generatedPanelCount === 0"
+                @click="handleDownloadZip"
+              >
+                <el-icon><Download /></el-icon>
+                批量下载
+              </el-button>
+            </div>
           </div>
         </template>
         
@@ -58,42 +91,71 @@
           <div 
             class="panel-item" 
             v-for="(panel, index) in panels" 
-            :key="panel.id"
+            :key="panel.id || `missing-${panel.panelIndex}`"
           >
             <div class="panel-header">
-              <span class="panel-index">第 {{ index + 1 }} 幅</span>
+              <span class="panel-index">第 {{ panel.panelIndex || index + 1 }} 幅</span>
               <el-tag v-if="panel.isCached" type="success" size="small">缓存命中</el-tag>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="regeneratingPanel === (panel.panelIndex || index + 1)"
+                @click.stop="handleRegeneratePanel(panel, index)"
+              >
+                {{ regeneratingPanel === (panel.panelIndex || index + 1) ? '正在生成...' : '重新生成' }}
+              </el-button>
             </div>
+            <el-alert
+              v-if="regenerationErrors[panel.panelIndex || index + 1]"
+              class="regeneration-error"
+              type="error"
+              :title="regenerationErrors[panel.panelIndex || index + 1]"
+              :closable="false"
+              show-icon
+            />
             <div class="panel-image">
               <div class="image-debug-info">
-                <el-tag size="small" type="info">URL: {{ panel.imageUrl ? '✅' : '❌' }}</el-tag>
+                <el-tag size="small" :type="panel.imageUrl ? 'info' : 'warning'">
+                  {{ panel.imageUrl ? 'URL: ✅' : '图片待生成' }}
+                </el-tag>
               </div>
-              <el-image
-                :src="panel.imageUrl"
-                :alt="`分镜${index + 1}`"
-                fit="contain"
-                :preview-src-list="allImageUrls"
-                :initial-index="index"
-                :lazy="true"
-                @load="handleImageLoad(index)"
-                @error="handleImageError(index, panel.imageUrl)"
-              >
-                <template #placeholder>
-                  <div class="image-loading">
-                    <el-icon class="is-loading"><Loading /></el-icon>
-                    <p>加载中...</p>
-                  </div>
-                </template>
-                <template #error>
-                  <div class="image-error">
-                    <el-icon><Picture /></el-icon>
-                    <p>图片加载失败</p>
-                    <el-button size="small" @click="showImageUrl(panel.imageUrl)">
-                      查看URL
-                    </el-button>
-                  </div>
-                </template>
-              </el-image>
+              <template v-if="panel.imageUrl">
+                <div class="image-stage">
+                  <el-image
+                    :src="getDisplayImageUrl(panel)"
+                    :alt="`分镜${index + 1}`"
+                    fit="contain"
+                    :preview-src-list="allImageUrls"
+                    :initial-index="index"
+                    :lazy="true"
+                    @load="handleImageLoad(index)"
+                    @error="handleImageError(index, panel.imageUrl)"
+                  >
+                    <template #placeholder>
+                      <div class="image-loading">
+                        <el-icon class="is-loading"><Loading /></el-icon>
+                        <p>加载中...</p>
+                      </div>
+                    </template>
+                    <template #error>
+                      <div class="image-error">
+                        <el-icon><Picture /></el-icon>
+                        <p>图片加载失败</p>
+                        <el-button size="small" @click="showImageUrl(panel.imageUrl)">
+                          查看URL
+                        </el-button>
+                      </div>
+                    </template>
+                  </el-image>
+                </div>
+                <div v-if="panel.subtitleText" class="subtitle-overlay">
+                  {{ panel.subtitleText }}
+                </div>
+              </template>
+              <div v-else class="image-error">
+                <el-icon><Picture /></el-icon>
+                <p>图片待生成</p>
+              </div>
             </div>
             <div class="panel-info">
               <el-collapse>
@@ -184,8 +246,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Picture, Loading, PictureFilled, SuccessFilled, Timer } from '@element-plus/icons-vue'
-import { getComicResult } from '@/api/comic'
+import { Picture, Loading, PictureFilled, SuccessFilled, Timer, Grid, Download } from '@element-plus/icons-vue'
+import { getComicResult, regeneratePanel, downloadComicPanels, downloadComicLayout } from '@/api/comic'
 
 const route = useRoute()
 const router = useRouter()
@@ -194,15 +256,31 @@ const loading = ref(true)
 const error = ref('')
 const comic = ref(null)
 const panels = ref([])
+const regeneratingPanel = ref(null)
+const imageVersions = ref({})
+const regenerationErrors = ref({})
+const layoutColumns = ref(1)
+const includeSubtitles = ref(true)
+const layoutDownloading = ref(false)
+const zipDownloading = ref(false)
 
 // 修复：路由参数是comicId，不是id
 const comicId = computed(() => route.params.comicId)
 const comicTitle = computed(() => comic.value?.title || comic.value?.comicTitle || '漫画预览')
+const generatedPanelCount = computed(() => panels.value.filter(panel => panel.imageUrl).length)
 
 // 所有图片URL（用于预览）
 const allImageUrls = computed(() => {
-  return panels.value.map(panel => panel.imageUrl)
+  return panels.value.map(panel => getDisplayImageUrl(panel))
 })
+
+const getDisplayImageUrl = (panel) => {
+  const imageUrl = panel?.imageUrl
+  if (!imageUrl) return imageUrl
+  const version = imageVersions.value[panel.id]
+  if (!version) return imageUrl
+  return `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}v=${version}`
+}
 
 onMounted(() => {
   loadComic()
@@ -255,6 +333,102 @@ const loadComic = async () => {
     ElMessage.error('加载漫画失败，请检查网络连接')
   } finally {
     loading.value = false
+  }
+}
+
+const handleRegeneratePanel = async (panel, index) => {
+  const panelIndex = panel.panelIndex || index + 1
+  if (regeneratingPanel.value !== null) return
+  regeneratingPanel.value = panelIndex
+  regenerationErrors.value = {
+    ...regenerationErrors.value,
+    [panelIndex]: ''
+  }
+  try {
+    console.log(`🔄 开始重新生成第 ${panelIndex} 幅，正在请求出图服务...`)
+    const response = await regeneratePanel(comicId.value, panelIndex)
+    if (response.code === 200) {
+      const updatedPanelId = response.data?.id || panel.id
+      imageVersions.value = {
+        ...imageVersions.value,
+        [updatedPanelId]: Date.now()
+      }
+      ElMessage.success(`第 ${panelIndex} 幅图片已重新生成`)
+      await loadComic()
+    } else {
+      const message = response.message || '重新生成失败'
+      regenerationErrors.value = {
+        ...regenerationErrors.value,
+        [panelIndex]: message
+      }
+      ElMessage.error(message)
+    }
+  } catch (err) {
+    console.error('重新生成分镜失败:', err)
+    const message = err.response?.data?.message || err.message || '重新生成失败，请稍后重试'
+    regenerationErrors.value = {
+      ...regenerationErrors.value,
+      [panelIndex]: message
+    }
+    ElMessage.error(message)
+  } finally {
+    regeneratingPanel.value = null
+  }
+}
+
+const triggerDownload = (response, fallbackName) => {
+  const blob = response.data
+  const contentDisposition = response.headers?.['content-disposition'] || ''
+  const encodedName = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const filename = encodedName ? decodeURIComponent(encodedName) : fallbackName
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+const getDownloadErrorMessage = async (err, fallback) => {
+  const data = err.response?.data
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text())
+      return parsed.message || fallback
+    } catch {
+      return fallback
+    }
+  }
+  return err.response?.data?.message || err.message || fallback
+}
+
+const handleDownloadLayout = async () => {
+  if (layoutDownloading.value || generatedPanelCount.value === 0) return
+  layoutDownloading.value = true
+  try {
+    const response = await downloadComicLayout(comicId.value, layoutColumns.value, includeSubtitles.value)
+    triggerDownload(response, `comic-${comicId.value}-layout.png`)
+    ElMessage.success('编排图片已下载')
+  } catch (err) {
+    ElMessage.error(await getDownloadErrorMessage(err, '批量编排失败，请稍后重试'))
+  } finally {
+    layoutDownloading.value = false
+  }
+}
+
+const handleDownloadZip = async () => {
+  if (zipDownloading.value || generatedPanelCount.value === 0) return
+  zipDownloading.value = true
+  try {
+    const response = await downloadComicPanels(comicId.value, includeSubtitles.value)
+    triggerDownload(response, `comic-${comicId.value}-panels.zip`)
+    ElMessage.success(`已下载 ${generatedPanelCount.value} 张图片`)
+  } catch (err) {
+    ElMessage.error(await getDownloadErrorMessage(err, '批量下载失败，请稍后重试'))
+  } finally {
+    zipDownloading.value = false
   }
 }
 
@@ -375,6 +549,7 @@ const getAvgTime = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
 }
 
 .title-section {
@@ -401,6 +576,18 @@ const getAvgTime = () => {
   font-weight: 600;
   border: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.layout-select {
+  width: 112px;
 }
 
 /* 统计信息卡片 */
@@ -576,6 +763,33 @@ const getAvgTime = () => {
   transition: all 0.4s ease;
   position: relative;
   z-index: 1;
+}
+
+.image-stage {
+  position: relative;
+  width: 100%;
+  max-width: 820px;
+  display: flex;
+  justify-content: center;
+}
+
+.image-stage :deep(.el-image) {
+  max-width: 100%;
+}
+
+.subtitle-overlay {
+  width: 100%;
+  max-width: 820px;
+  box-sizing: border-box;
+  margin-top: 12px;
+  padding: 14px 20px;
+  color: #ffffff;
+  background: #20252b;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-line;
 }
 
 .panel-image :deep(.el-image):hover {
@@ -783,6 +997,25 @@ const getAvgTime = () => {
   
   .preview-header h2 {
     font-size: 22px;
+  }
+
+  .subtitle-overlay {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  .preview-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .preview-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .preview-actions .el-button {
+    flex: 1;
   }
   
   .panel-header {

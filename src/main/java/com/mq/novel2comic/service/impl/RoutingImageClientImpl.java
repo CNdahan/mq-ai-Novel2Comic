@@ -43,13 +43,17 @@ public class RoutingImageClientImpl implements UnifiedImageClient {
 
     @Override
     public String generateImage(String prompt, String negativePrompt, String size) {
-        String provider = getProvider();
+        AigcConfig config = aigcConfigService.getConfig();
+        String provider = getProvider(config);
+        String resolution = ImageSizePolicy.normalizeResolution(config.getResolution());
+        String imageSize = ImageSizePolicy.sizeFor(resolution);
         log.info("🎨 使用AIGC提供商: {}", getProviderName());
         return switch (provider) {
-            case "siliconflow" -> siliconFlowImageClient.generateImage(prompt, negativePrompt, size.replace("*", "x"));
-            case "wanx" -> wanxImageClient.generateImage(prompt, negativePrompt, ComicStyle.JAPANESE.getWanxStyle(), size);
-            case "openai" -> openAIImageClient.generateImage(prompt, negativePrompt, size);
-            case "grok" -> xaiImageClient.generateImage(prompt, negativePrompt, size);
+            case "siliconflow" -> siliconFlowImageClient.generateImage(prompt, negativePrompt, imageSize);
+            case "wanx" -> wanxImageClient.generateImage(prompt, negativePrompt,
+                    ComicStyle.JAPANESE.getWanxStyle(), ImageSizePolicy.wanxSizeFor(resolution));
+            case "openai" -> openAIImageClient.generateImage(prompt, negativePrompt, imageSize);
+            case "grok" -> xaiImageClient.generateImage(prompt, negativePrompt, imageSize);
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的AIGC提供商: " + provider);
         };
     }
@@ -67,7 +71,10 @@ public class RoutingImageClientImpl implements UnifiedImageClient {
     }
 
     private String getProvider() {
-        AigcConfig config = aigcConfigService.getConfig();
+        return getProvider(aigcConfigService.getConfig());
+    }
+
+    private String getProvider(AigcConfig config) {
         String provider = config.getProvider();
         if (provider == null || provider.isBlank()) {
             return "siliconflow";

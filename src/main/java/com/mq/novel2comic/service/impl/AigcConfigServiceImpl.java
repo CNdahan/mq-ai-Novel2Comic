@@ -34,6 +34,9 @@ public class AigcConfigServiceImpl implements AigcConfigService {
     @Value("${aigc.provider:siliconflow}")
     private String defaultProvider;
 
+    @Value("${aigc.resolution:1k}")
+    private String defaultResolution;
+
     @Value("${aigc.siliconflow.api-key:}")
     private String siliconFlowApiKey;
 
@@ -118,6 +121,8 @@ public class AigcConfigServiceImpl implements AigcConfigService {
                 .apiKey(defaultIfBlank(config.getApiKey(), defaults.getApiKey()))
                 .model(defaultIfBlank(config.getModel(), defaults.getModel()))
                 .baseUrl(normalizeBaseUrl(defaultIfBlank(config.getBaseUrl(), defaults.getBaseUrl())))
+                .resolution(ImageSizePolicy.normalizeResolution(
+                        defaultIfBlank(config.getResolution(), defaults.getResolution())))
                 .build();
     }
 
@@ -129,6 +134,7 @@ public class AigcConfigServiceImpl implements AigcConfigService {
                     .apiKey(trimToEmpty(wanxApiKey))
                     .model(defaultIfBlank(wanxModel, "wanx-v1"))
                     .baseUrl("https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis")
+                    .resolution(getDefaultResolution())
                     .build();
         }
         if ("openai".equals(normalizedProvider)) {
@@ -137,6 +143,7 @@ public class AigcConfigServiceImpl implements AigcConfigService {
                     .apiKey("")
                     .model("gpt-image-1")
                     .baseUrl("https://api.openai.com/v1/images/generations")
+                    .resolution(getDefaultResolution())
                     .build();
         }
         if ("grok".equals(normalizedProvider)) {
@@ -145,6 +152,7 @@ public class AigcConfigServiceImpl implements AigcConfigService {
                     .apiKey("")
                     .model("grok-imagine-image-2.0")
                     .baseUrl("https://api.x.ai/v1/images/generations")
+                    .resolution(getDefaultResolution())
                     .build();
         }
         return AigcConfig.builder()
@@ -152,7 +160,12 @@ public class AigcConfigServiceImpl implements AigcConfigService {
                 .apiKey(trimToEmpty(siliconFlowApiKey))
                 .model(defaultIfBlank(siliconFlowModel, "black-forest-labs/FLUX.1-schnell"))
                 .baseUrl("https://api.siliconflow.cn/v1/images/generations")
+                .resolution(getDefaultResolution())
                 .build();
+    }
+
+    private String getDefaultResolution() {
+        return ImageSizePolicy.normalizeResolution(defaultResolution);
     }
 
     private String normalizeProvider(String provider) {

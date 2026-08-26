@@ -149,6 +149,8 @@ aigc:
   # 推荐使用：siliconflow（硅基流动）
   # 原因：速度快（5-15秒/张）、质量好、支持多种模型
   provider: siliconflow
+  # 图片默认分辨率：1k（费用较低）或 2k
+  resolution: 1k
   
   # 硅基流动配置（推荐）⭐⭐⭐⭐⭐
   siliconflow:

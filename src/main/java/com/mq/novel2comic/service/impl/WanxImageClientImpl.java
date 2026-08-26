@@ -71,7 +71,8 @@ public class WanxImageClientImpl implements WanxImageClient {
         try {
             AigcConfig config = resolveConfig();
             validateConfig(config);
-            log.info("开始调用通义万相生成图片, model={}, style={}, size={}", config.getModel(), style, size);
+            String imageSize = ImageSizePolicy.wanxSizeFor(config.getResolution());
+            log.info("开始调用通义万相生成图片, model={}, style={}, size={}", config.getModel(), style, imageSize);
             long startTime = System.currentTimeMillis();
             // 1. 构建请求对象
             WanxRequest request = WanxRequest.builder()
@@ -82,7 +83,7 @@ public class WanxImageClientImpl implements WanxImageClient {
                             .build())
                     .parameters(WanxRequest.Parameters.builder()
                             .style(style)
-                            .size(size)
+                            .size(imageSize)
                             .n(1)
                             .build())
                     .build();
@@ -210,6 +211,7 @@ public class WanxImageClientImpl implements WanxImageClient {
                 .apiKey(apiKey)
                 .model(defaultModel)
                 .baseUrl(defaultBaseUrl)
+                .resolution(ImageSizePolicy.DEFAULT_RESOLUTION)
                 .build();
     }
 

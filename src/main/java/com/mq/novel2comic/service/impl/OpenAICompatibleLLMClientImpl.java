@@ -11,6 +11,7 @@ import com.mq.novel2comic.service.UnifiedLLMClient;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,15 +28,29 @@ import java.util.Arrays;
 @Service
 public class OpenAICompatibleLLMClientImpl implements UnifiedLLMClient {
 
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long INITIAL_RETRY_DELAY_MILLIS = 1000L;
+
+    @Value("${llm.request-timeout-seconds:180}")
+    private long requestTimeoutSeconds = 180L;
+
     @Resource
     private AiConfigService aiConfigService;
 
     @Resource
     private ObjectMapper objectMapper;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .build();
+    private final HttpClient httpClient;
+
+    public OpenAICompatibleLLMClientImpl() {
+        this(HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build());
+    }
+
+    OpenAICompatibleLLMClientImpl(HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @Override
     public String chat(String prompt, String systemPrompt) {
@@ -64,15 +79,16 @@ public class OpenAICompatibleLLMClientImpl implements UnifiedLLMClient {
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + config.getApiKey())
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(Duration.ofSeconds(90))
+                    .timeout(Duration.ofSeconds(requestTimeoutSeconds))
                     .build();
-            HttpResponse<String> httpResponse = httpClient.send(httpRequest,
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> httpResponse = sendWithRetry(httpRequest, config.getProvider());
             if (httpResponse.statusCode() != 200) {
-                log.error("❌ [{}] HTTP错误: {}, 响应: {}",
-                        config.getProvider(), httpResponse.statusCode(), httpResponse.body());
+                String responseSummary = summarizeResponse(httpResponse.body());
+                log.error("❌ [{}] HTTP错误: {}, 响应摘要: {}",
+                        config.getProvider(), httpResponse.statusCode(), responseSummary);
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,
-                        getProviderName() + "调用失败，状态码: " + httpResponse.statusCode());
+                        getProviderName() + "调用失败，状态码: " + httpResponse.statusCode()
+                                + (responseSummary.isBlank() ? "" : "，响应: " + responseSummary));
             }
             LLMResponse response = objectMapper.readValue(httpResponse.body(), LLMResponse.class);
             if (response.getChoices() == null || response.getChoices().isEmpty()) {
@@ -117,5 +133,39 @@ public class OpenAICompatibleLLMClientImpl implements UnifiedLLMClient {
         if (config.getModel() == null || config.getModel().isBlank()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, getProviderName() + " 模型未配置");
         }
+    }
+
+    private HttpResponse<String> sendWithRetry(HttpRequest request, String provider)
+            throws java.io.IOException, InterruptedException {
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (!isRetryableStatus(response.statusCode()) || attempt == MAX_ATTEMPTS) {
+                return response;
+            }
+
+            long delay = INITIAL_RETRY_DELAY_MILLIS * (1L << (attempt - 1));
+            log.warn("⚠️ [{}] LLM请求返回{}，将在{}ms后重试（第{}/{}次）",
+                    provider, response.statusCode(), delay, attempt, MAX_ATTEMPTS);
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+        }
+        return response;
+    }
+
+    private boolean isRetryableStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500 && statusCode <= 599;
+    }
+
+    private String summarizeResponse(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        String compact = body.replaceAll("\\s+", " ").trim();
+        return compact.length() <= 500 ? compact : compact.substring(0, 500) + "...";
     }
 }

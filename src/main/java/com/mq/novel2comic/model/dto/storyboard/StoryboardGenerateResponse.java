@@ -19,6 +19,9 @@ public class StoryboardGenerateResponse {
      * 小说ID
      */
     private Long novelId;
+
+    /** 后台生成任务ID */
+    private String taskId;
     
     /**
      * 生成的分镜数量

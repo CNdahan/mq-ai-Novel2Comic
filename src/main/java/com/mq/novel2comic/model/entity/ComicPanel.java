@@ -2,6 +2,7 @@ package com.mq.novel2comic.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.util.Date;
@@ -74,6 +75,10 @@ public class ComicPanel {
      * 负面Prompt
      */
     private String negativePrompt;
+
+    /** 从当前分镜提取的字幕文本，不落库。 */
+    @TableField(exist = false)
+    private String subtitleText;
 
     /**
      * 是否缓存命中

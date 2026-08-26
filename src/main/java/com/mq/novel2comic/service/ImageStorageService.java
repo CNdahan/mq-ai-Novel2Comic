@@ -24,6 +24,11 @@ public interface ImageStorageService {
      * @return 是否存在
      */
     boolean exists(Long comicId, int panelIndex);
+
+    /**
+     * 读取本地图片内容，用于批量下载和图片编排。
+     */
+    byte[] readImage(Long comicId, int panelIndex);
     
     /**
      * 获取本地图片URL

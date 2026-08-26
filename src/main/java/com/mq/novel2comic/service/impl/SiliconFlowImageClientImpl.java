@@ -80,14 +80,15 @@ public class SiliconFlowImageClientImpl implements SiliconFlowImageClient {
         try {
             AigcConfig config = resolveConfig();
             validateConfig(config);
-            log.info("🚀 [硅基流动] 开始生成图片, model={}, size={}", config.getModel(), imageSize);
+            String resolvedImageSize = ImageSizePolicy.sizeFor(config.getResolution());
+            log.info("🚀 [硅基流动] 开始生成图片, model={}, size={}", config.getModel(), resolvedImageSize);
             long startTime = System.currentTimeMillis();
             // 1. 构建请求
             SiliconFlowRequest request = SiliconFlowRequest.builder()
                     .model(config.getModel())
                     .prompt(prompt)
                     .negativePrompt(negativePrompt)
-                    .imageSize(imageSize)
+                    .imageSize(resolvedImageSize)
                     .batchSize(1)
                     .guidanceScale(7.5)
                     .numInferenceSteps(20)  // SDXL推荐20步
@@ -145,6 +146,7 @@ public class SiliconFlowImageClientImpl implements SiliconFlowImageClient {
                 .apiKey(apiKey)
                 .model(defaultModel)
                 .baseUrl(defaultBaseUrl)
+                .resolution(ImageSizePolicy.DEFAULT_RESOLUTION)
                 .build();
     }
 

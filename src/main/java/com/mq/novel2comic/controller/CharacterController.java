@@ -56,6 +56,9 @@ public class CharacterController {
             }
             if ("failed".equals(novel.getStatus())) {
                 String errorMessage = novel.getErrorMessage();
+                if (errorMessage != null && errorMessage.startsWith("角色提取失败")) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, errorMessage);
+                }
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,
                         "角色提取失败：" + (errorMessage == null || errorMessage.isBlank() ? "请检查AI配置后重试" : errorMessage));
             }

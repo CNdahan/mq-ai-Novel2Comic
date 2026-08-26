@@ -28,6 +28,14 @@ public interface NovelService extends IService<Novel> {
     NovelUploadResponse uploadNovel(NovelUploadRequest request, Long userId);
 
     /**
+     * 重新提取已上传小说的角色信息。
+     * @param novelId 小说ID
+     * @param userId 当前用户ID
+     * @return 是否提取成功
+     */
+    boolean retryCharacterExtraction(Long novelId, Long userId);
+
+    /**
      * 获取小说详情
      * @param novelId 小说ID
      * @param userId 用户ID
